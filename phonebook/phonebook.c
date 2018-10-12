@@ -1,3 +1,5 @@
+// Ядро телефонного справочника
+
 #include <stdio.h>
 #include "phonebook.h"
 
