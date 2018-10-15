@@ -13,7 +13,7 @@ typedef struct {
 } chel;
 
 // Копирование строки из массива src в dst
-void copy_str(char* src, char* dst);
+void copy_str(const char* src, char* dst);
 
 // Пуста ли строка?
 int is_line_empty(const unsigned int i);
@@ -22,13 +22,13 @@ int is_line_empty(const unsigned int i);
 int find_free();
 
 // Добавить контакт в книгу
-int add_chel(char* fn, char* sn, char* num);
+int add_chel(const char* fn, const char* sn, const char* num);
 
 // Одинаковы ли строки a и b?
-int is_equal(char* a, char* b);
+int is_equal(const char* a, const char* b);
 
 // Поиск контакта в книге по имени и фамилии
-int find_chel(char* fn, char* sn);
+int find_chel(const char* fn, const char* sn);
 
 // Удаление записи в книге по индексу
 void delete_record(const unsigned int i);
@@ -37,10 +37,10 @@ void delete_record(const unsigned int i);
 void print_record(const unsigned int i);
 
 // Удалить контакт из книги по имени и фамилии
-void delete_chel(char* fn, char* sn);
+void delete_chel(const char* fn, const char* sn);
 
 // Найти контакт в книге и напечатать его
-void find_and_print(char* fn, char* sn);
+void find_and_print(const char* fn, const char* sn);
 
 
 #endif // PHONEBOOK_H_INCLUDED

@@ -9,7 +9,7 @@ chel book[PHONEBOOK_SIZE];
 
 
 // Копирование строки из массива src в dst
-void copy_str(char* src, char* dst)
+void copy_str(const char* src, char* dst)
 {
 	int i = 0;
 	while (++i <= FIELD_SIZE && *src) {
@@ -39,7 +39,7 @@ int find_free()
 
 
 // Добавить контакт в книгу
-int add_chel(char* fn, char* sn, char* num)
+int add_chel(const char* fn, const char* sn, const char* num)
 {
 	unsigned int i = find_free();
 	if (i >= PHONEBOOK_SIZE)
@@ -52,7 +52,7 @@ int add_chel(char* fn, char* sn, char* num)
 
 
 // Одинаковы ли строки a и b?
-int is_equal(char* a, char* b)
+int is_equal(const char* a, const char* b)
 {
 	int res = 1;
 	for	(int i = 0; i < FIELD_SIZE; ++i) {
@@ -65,7 +65,7 @@ int is_equal(char* a, char* b)
 
 
 // Поиск контакта в книге по имени и фамилии
-int find_chel(char* fn, char* sn)
+int find_chel(const char* fn, const char* sn)
 {
 	int i = 0;
 	while (i < PHONEBOOK_SIZE && ! (is_equal(book[i].name, fn) && is_equal(book[i].sname, sn)))
@@ -98,7 +98,7 @@ void print_record(const unsigned int i)
 
 
 // Удалить контакт из книги по имени и фамилии
-void delete_chel(char* fn, char* sn)
+void delete_chel(const char* fn, const char* sn)
 {
 	int i = find_chel(fn, sn);
 	if (i >= PHONEBOOK_SIZE)
@@ -109,7 +109,7 @@ void delete_chel(char* fn, char* sn)
 
 
 // Найти контакт в книге и напечатать его
-void find_and_print(char* fn, char* sn)
+void find_and_print(const char* fn, const char* sn)
 {
 	int i = find_chel(fn, sn);
 	if (i >= PHONEBOOK_SIZE)

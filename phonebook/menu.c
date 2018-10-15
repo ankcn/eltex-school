@@ -1,6 +1,7 @@
 // Меню телефонного справочника
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "menu.h"
 #include "phonebook.h"
 
@@ -17,16 +18,28 @@ int menu_title()
 
 	int c;
 	while ((c = getchar()) == '\n');
+	getchar(); // Remove new line from stdin buffer
 	return c;
 }
 
 
-void enter_string(char* req, char* str)
+void enter_string(const char* req, char* str)
 {
 	printf(req);
-	fflush(stdin);
-	scanf("%s", str);
-	// TODO: length check
+	scanf("%" INPUT_STRING_LIMIT "s", str);
+}
+
+
+int enter_value(const char* req, int def)
+{
+	printf("%s [%d]: ", req, def);
+	char buf[4];
+	fgets(buf, 3, stdin);
+	int x = atoi(buf);
+	if (! x)
+		return def;
+	else
+		return x;
 }
 
 
@@ -59,9 +72,15 @@ void menu_find()
 
 void menu_print()
 {
-	printf("\nFirst five records in phonebook: \n");
-	// TODO: selectable range
-	for (int i = 0; i < 5; ++i)
+	int start = enter_value("Start position", 1) - 1;
+	if (start < 0 || start >= PHONEBOOK_SIZE)
+		start = 0;
+	int stop = enter_value("Stop position", 5);
+	if (stop > PHONEBOOK_SIZE)
+		stop = PHONEBOOK_SIZE;
+	if (stop <= start)
+		stop = start + 1;
+	for (int i = start; i < stop; ++i)
 		print_record(i);
 }
 
@@ -75,7 +94,7 @@ void menu_delete()
 }
 
 
-void menu_process(char c)
+void menu_process(const char c)
 {
 	switch (c) {
 		case 'a': menu_add(); break;
