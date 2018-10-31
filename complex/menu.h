@@ -1,12 +1,12 @@
 #ifndef MENU_H_INCLUDED
 #define MENU_H_INCLUDED
 
-
 #include "complex.h"
 
 
 // Предельная Длинна строки с вещественным числом
 #define NUMBER_LENGTH	15
+
 
 // Вывод пунктов меню
 int menu_title();
@@ -19,6 +19,9 @@ int menu_process(const char c);
 
 // Ввод комплексного числа
 complex enter_complex();
+
+// Печать комплексного числа
+void print_complex(const complex a);
 
 
 #endif

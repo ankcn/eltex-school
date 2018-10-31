@@ -1,21 +1,21 @@
-// Меню телефонного справочника
+// Меню калькулятора
 
 #include <stdio.h>
 #include <stdlib.h>
 #include "menu.h"
+#include "modules.h"
 
+
+extern int nmod; // Объявлена в main.c
 
 
 int menu_title()
 {
-	printf("\nSelect operation on two complex numbers:\n"
-		"1 - Addition\n"
-		"2 - Subtraction\n"
-		"3 - Multiplication\n"
-		"4 - Division\n"
-		"q - quit\n"
-	);
-
+	printf("\nSelect operation on two complex numbers:\n");
+	// Перебираем имеющиеся модули и выводим названия операций, которые они предоставляют
+	for (int i = 0; i < nmod; ++i)
+		printf("%d - %s\n", i + 1, ops[i].op_name);
+	printf("q - quit\n");
 	int c;
 	while ((c = getchar()) == '\n');
 	getchar(); // Remove new line from stdin buffer
@@ -34,30 +34,28 @@ float enter_value(const char* req)
 
 int menu_process(const char c)
 {
-	if (c < '1' || c > '4') {
+	int n = c - '1';
+	// Проверяем, корректная ли команда получена
+	if (n < 0 || n >= nmod) {
 		printf(" Unrecognized command\n");
 		return -1;
 	}
 
 	complex a, b ,r;
+	// Запрос у пользователя на ввод операндов
 	printf("First complex aperand\n");
 	a = enter_complex();
 	printf("Second complex aperand\n");
 	b = enter_complex();
 
+	// Печатаем выражение, вычисляем и печатаем результат
 	printf("(");
-	compl_print(a);
-
-	switch (c) {
-		case '1': printf(") + ("); r = compl_plus(a, b); break;
-		case '2': printf(") - ("); r = compl_minus(a, b); break;
-		case '3': printf(") * ("); r = compl_mult(a, b); break;
-		case '4': printf(") / ("); r = compl_divide(a, b); break;
-	}
-
-	compl_print(b);
+	print_complex(a);
+	printf(") %c (", ops[n].op_symbol);
+	r = ops[n].op_func(a, b);
+	print_complex(b);
 	printf(") = ");
-	compl_print(r);
+	print_complex(r);
 	printf("\n");
 
 	return 0;
@@ -70,5 +68,16 @@ complex enter_complex()
 	t.re = enter_value("Re");
 	t.im = enter_value("Im");
 	return t;
+}
+
+
+void print_complex(const complex a)
+{
+	printf("%.3f", a.re);
+	float t = a.im;
+	if (t < 0)
+		t = -a.im;
+	if (t)
+		printf(" %c j%.3f", (a.im < 0) ? '-' : '+', t);
 }
 
