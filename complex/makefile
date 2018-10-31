@@ -13,29 +13,32 @@ main.o: main.c complex.h menu.h modules.h
 modules.o: modules.c modules.h
 	$(COMPILER) -o modules.o -c modules.c
 
-libcompl_mult.so: compl_mult.o
+libcompl_mult.so: compl_mult.o $(MOD_DIR)
 	gcc -shared -o $(MOD_DIR)/libcompl_mult.so compl_mult.o
 
 compl_mult.o: compl_mult.c complex.h
 	$(COMPILER) -o compl_mult.o -c compl_mult.c
 
-libcompl_div.so: compl_div.o
+libcompl_div.so: compl_div.o $(MOD_DIR)
 	gcc -shared -o $(MOD_DIR)/libcompl_div.so compl_div.o
 
 compl_div.o: compl_div.c complex.h
 	$(COMPILER) -o compl_div.o -c compl_div.c
 
-libcompl_plus.so: compl_plus.o
+libcompl_plus.so: compl_plus.o $(MOD_DIR)
 	gcc -shared -o $(MOD_DIR)/libcompl_plus.so compl_plus.o
 
 compl_plus.o: compl_plus.c complex.h
 	$(COMPILER) -o compl_plus.o -c compl_plus.c
 		
-libcompl_minus.so: compl_minus.o
+libcompl_minus.so: compl_minus.o $(MOD_DIR)
 	gcc -shared -o $(MOD_DIR)/libcompl_minus.so compl_minus.o
 
 compl_minus.o: compl_minus.c complex.h
 	$(COMPILER) -o compl_minus.o -c compl_minus.c
 
+$(MOD_DIR):
+	mkdir $(MOD_DIR)
+
 clean:
-	rm *.o complex $(MOD_DIR)/*
+	rm -frd *.o complex $(MOD_DIR)
