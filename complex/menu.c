@@ -73,11 +73,11 @@ complex enter_complex()
 
 void print_complex(const complex a)
 {
-	printf("%.3f", a.re);
+	printf("%.2f", a.re);
 	float t = a.im;
 	if (t < 0)
 		t = -a.im;
 	if (t)
-		printf(" %c j%.3f", (a.im < 0) ? '-' : '+', t);
+		printf(" %c j%.2f", (a.im < 0) ? '-' : '+', t);
 }
 
