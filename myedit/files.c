@@ -1,7 +1,8 @@
 #include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+//#include <sys/types.h>
+//#include <sys/stat.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include "files.h"
 
 
@@ -16,6 +17,10 @@ int open_file(const char* fname, char* buf)
 		return -1;
 	}
 	lseek(fd, 0, SEEK_SET);
+	char* tmp = (char*) realloc(buf, fsize + BLOCK_SIZE);
+	if (! tmp)
+		return -2;
+	buf = tmp;
 	if (read(fd, buf, fsize) < 0) {
 		close(fd);
 		return -1;

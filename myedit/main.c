@@ -1,3 +1,5 @@
+// Проект MyEdit - простой текстовый редактор
+
 #include <stdio.h>
 #include <curses.h>
 #include "editor.h"
@@ -5,11 +7,20 @@
 
 int main()
 {
-	prepare();
-	load_doc("kilo.txt");
+	prepare();	// Подготовительные мероприятия
+	load_doc("kilo.txt");	// Открываем документ
 
-	int k = 0x100;	// Keycode
+	int k = 0;	// Код клавиши, получаемой от терминала
 
+/*
+Основной цикл, в котором запрашиваем код символа из терминала, 
+выполняем процедуру, соответствующую полученному коду, либо 
+добавляем букву в текущий документ, если это печатный символ.
+Здесь же обновляем значения размера окна редактора,
+вычисляем текущие координаты курсора и рисуем экран вместе с
+видимой частью документа.
+Цикл завершается, когда получена определённая комбинация клавиш.
+*/
 	do {
 		update_size();
 
@@ -30,22 +41,32 @@ int main()
 			line_down();
 			break;
 		case KEY_END:
-//			while (ed.pos < ed.sz && doc[++ed.pos] != '\n');
+		case WCTRL('E'):
+			end_of_paragraph();
+			break;
+		case KEY_HOME:
+		case WCTRL('H'):
+			begin_of_paragraph();
+			break;
+		case KEY_NPAGE:
+		case WCTRL('D'):
+			page_down();
+			break;
+		case KEY_PPAGE:
+		case WCTRL('U'):
+			page_up();
 			break;
 		default:
-			if (! (k & 0xFF00))
+			if ((k > 31 && k < 177) || k == '\n')
 				add_letter(k);
 		}
 
-		// Defining cursor coordinates on the screen
 		calc_xy();
 		print_on_screen();
-//		move(0,0);
-//		printw("ed.pos = %d; sz = %d; y = %d; x = %d", ed.pos, ed.sz, ed.y, ed.x);
 
-	} while (k = get_key());
+	} while ((k = get_key()));
 
-	finish();
+	finish();	// Закрываем открытое, освобождаем ресурсы
     return 0;
 }
 
