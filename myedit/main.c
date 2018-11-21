@@ -5,16 +5,18 @@
 #include "editor.h"
 
 
-int main()
+int main(int argc, char** argv)
 {
 	prepare();	// Подготовительные мероприятия
-	load_doc("kilo.txt");	// Открываем документ
+
+	if (argc == 2)
+		load_doc(argv[1]);	// Открываем документ
 
 	int k = 0;	// Код клавиши, получаемой от терминала
 
 /*
-Основной цикл, в котором запрашиваем код символа из терминала, 
-выполняем процедуру, соответствующую полученному коду, либо 
+Основной цикл, в котором запрашиваем код символа из терминала,
+выполняем процедуру, соответствующую полученному коду, либо
 добавляем букву в текущий документ, если это печатный символ.
 Здесь же обновляем значения размера окна редактора,
 вычисляем текущие координаты курсора и рисуем экран вместе с
@@ -27,6 +29,10 @@ int main()
 		switch (k) {
 		case KEY_BACKSPACE:
 			backspase();
+			break;
+		case KEY_DC:
+		case WCTRL('D'):
+			del_letter();
 			break;
 		case KEY_UP:
 			line_up();
@@ -49,12 +55,18 @@ int main()
 			begin_of_paragraph();
 			break;
 		case KEY_NPAGE:
-		case WCTRL('D'):
 			page_down();
 			break;
 		case KEY_PPAGE:
-		case WCTRL('U'):
 			page_up();
+			break;
+		case KEY_F(2):
+		case WCTRL('S'):
+			ask_and_save();
+			break;
+		case KEY_F(3):
+		case WCTRL('O'):
+			ask_and_load();
 			break;
 		default:
 			if ((k > 31 && k < 177) || k == '\n')

@@ -5,14 +5,15 @@
 #include "editor.h"
 
 
+//
 struct {
-	unsigned long pos; // ed.pos in doc
-	unsigned long size; // Document size
-	unsigned int x, y; // Cursor
+	size_t pos; // ed.pos in doc
+	size_t size; // Document size
+	size_t x, y; // Cursor
 	int width;
 	int height;
-	unsigned int disp;
-	unsigned long buf_len;
+	size_t disp;
+	size_t buf_len;
 	char fname[FNAME_LEN];
 	char* doc;
 } ed = { 0, 0, 0, 0, 0, 0, 0, 0, NO_FILE };
@@ -41,27 +42,37 @@ void backspase()
 }
 
 
+void fill_line(const size_t y, const char c)
+{
+	move(y, 0);
+	for (int x = 0; x < ed.width; ++x)
+		addch(c);
+}
+
+
 void print_on_screen()
 {
 	clear();
 	move(0, 0);
 	printw("MyEdit - %s; line: %d; col: %d; pos: %d; size: %d", ed.fname, ed.y, ed.x, ed.pos, ed.size);
-	move(1, 0);
-	for (int x = 0; x < ed.width; ++x)
-		addch('-');
+	fill_line(1, '-');
 	move(FIRST_LINE, 0);
+	size_t tp = pos_by_xy(0, ed.disp + ed.height);
+	char tc = ed.doc[tp];
+	ed.doc[tp] = 0;
 	printw(ed.doc + pos_by_xy(0, ed.disp));
+	ed.doc[tp] = tc;
 	move(ed.y - ed.disp + FIRST_LINE, ed.x);
 	refresh();
 }
 
 
-unsigned long pos_by_xy(const int x, const int y)
+size_t pos_by_xy(const int x, const int y)
 {
 	if (x < 0 || y < 0)
 		return 0;
-	unsigned int tx = 0, ty = 0;
-	unsigned long rp = 0;
+	size_t tx = 0, ty = 0;
+	size_t rp = 0;
 	while (ty < y && rp < ed.size)
 		if (ed.doc[rp++] == '\n' || ++tx >= ed.width)
 			tx = 0, ++ty;
@@ -136,6 +147,11 @@ long load_doc(const char* fname)
 	}
 	strcpy(ed.fname, fname);
 	ed.buf_len = ed.size + BLOCK_SIZE;
+	for (char* it = ed.doc; *it; ++it)
+		if (*it == '\t')
+			*it = ' ';
+		else if (*it == '%')
+			*it = '/';
 	return 0;
 }
 
@@ -197,3 +213,47 @@ void page_up()
 	ed.pos = pos_by_xy(ed.x, ed.y - ed.height);
 }
 
+
+int save_doc()
+{
+	return save_file(ed.fname, ed.doc, ed.size);
+}
+
+
+int ask_and_load()
+{
+	fill_line(0, ' ');
+//	mvprintw(0, 0, "Open file: ");
+	char name[FNAME_LEN] = "kilo.txt";
+/*
+	echo();
+	nocbreak();
+	getstr(name);
+	noecho();
+	cbreak();
+*/
+	return load_doc(name);
+}
+
+
+int ask_and_save()
+{
+	fill_line(0, ' ');
+	mvprintw(0, 0, "Save as: ", ed.fname);
+	char name[FNAME_LEN];
+	echo();
+
+	getstr(name);
+	noecho();
+
+	return save_file(name, ed.doc, ed.size);
+}
+
+
+void del_letter()
+{
+	if (ed.pos < ed.size) {
+		++ed.pos;
+		backspase();
+	}
+}

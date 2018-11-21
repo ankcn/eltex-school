@@ -9,16 +9,13 @@
 #define WCTRL(k)	(k - 0100)
 
 // Строка для отображения вместо названия файла, когда ничего не открыто
-#define NO_FILE		"no file"
-
-// Максимальная длинна имени файла
-#define FNAME_LEN	0x100
+#define NO_FILE		"new"
 
 
 // Инициализация и определение параметров экрана ncurses, выделение памяти для документа
 void prepare();
 
-// Закрытие экрана, высвобождение памяти 
+// Закрытие экрана, высвобождение памяти
 void finish();
 
 // Вывод на экран терминала интерфейса редактора, включая видимую часть документа
@@ -61,13 +58,25 @@ void update_size();
 int get_key();
 
 // Вычислить линейную позицию в документе, исходя из заданных координат
-unsigned long pos_by_xy(const int x, const int y);
+size_t pos_by_xy(const int x, const int y);
 
 // Пролистать одну страницу вниз
 void page_down();
 
 // Пролистать одну страницу вверх
 void page_up();
+
+//
+int save_doc();
+
+//
+int ask_and_load();
+
+//
+int ask_and_save();
+
+//
+void del_letter();
 
 
 #endif // EDITOR_H_INCLUDED

@@ -1,6 +1,4 @@
 #include <fcntl.h>
-//#include <sys/types.h>
-//#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include "files.h"
@@ -31,8 +29,18 @@ int open_file(const char* fname, char* buf)
 }
 
 
-int save_file(const char* fname, const char* buf)
+int save_file(const char* fname, const char* buf, const size_t sz)
 {
+	int fd = open(fname, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+	if (fd <= 0)
+		return -1;
 
+	if (write(fd, buf, sz) < 0) {
+		close(fd);
+		return -1;
+	}
+
+	if (close(fd) < 0)
+		return -1;
 	return 0;
 }
