@@ -9,8 +9,10 @@ int main(int argc, char** argv)
 {
 	prepare();	// Подготовительные мероприятия
 
+	// Если передан параметр, то считаем его именем файла и
+	// пытаемся загрузить
 	if (argc == 2)
-		load_doc(argv[1]);	// Открываем документ
+		load_doc(argv[1]);
 
 	int k = 0;	// Код клавиши, получаемой от терминала
 
@@ -66,10 +68,11 @@ int main(int argc, char** argv)
 			break;
 		case KEY_F(3):
 		case WCTRL('O'):
+			//load_doc("kilo.txt");
 			ask_and_load();
 			break;
 		default:
-			if ((k > 31 && k < 177) || k == '\n')
+			if ((k > 31 && k < 127 && k != 37) || k == '\n')
 				add_letter(k);
 		}
 

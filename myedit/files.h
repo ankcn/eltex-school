@@ -5,12 +5,12 @@
 // Максимальная длинна имени файла
 #define FNAME_LEN	0x100
 
-//
+// Размер блока памяти, выделямого за один раз для буфера документа
 #define BLOCK_SIZE	0x10000
 
 
 // Загрузка из файла в буфер
-int open_file(const char* fname, char* buf);
+int open_file(const char* fname, char** buf);
 
 // Выгрузка из буфера в файл
 int save_file(const char* fname, const char* buf, const size_t sz);

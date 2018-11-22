@@ -49,7 +49,7 @@ void step_forward();
 void step_back();
 
 // Открыть документ из файла
-long load_doc(const char* fname);
+int load_doc(const char* fname);
 
 // Обновить информацию о текущем размере экрана
 void update_size();
@@ -66,17 +66,20 @@ void page_down();
 // Пролистать одну страницу вверх
 void page_up();
 
-//
+// Сохранить документ в файле под текущем именем
 int save_doc();
 
-//
+// Запросить имя файла и открыть
 int ask_and_load();
 
-//
+// Запросить имя файла и сохранить
 int ask_and_save();
 
-//
+// Удалить символ в позиции курсора
 void del_letter();
+
+// Заполнить линию на экране заданным символом
+void fill_line(const size_t y, const char c);
 
 
 #endif // EDITOR_H_INCLUDED

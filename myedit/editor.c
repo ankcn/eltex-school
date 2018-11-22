@@ -5,34 +5,47 @@
 #include "editor.h"
 
 
-//
+// Структура с параметрами редактора
 struct {
-	size_t pos; // ed.pos in doc
-	size_t size; // Document size
-	size_t x, y; // Cursor
-	int width;
-	int height;
-	size_t disp;
-	size_t buf_len;
-	char fname[FNAME_LEN];
-	char* doc;
+	size_t pos;	// Текущая позиция в документе
+	size_t size;	// Размер документа
+	size_t x, y;	// Координаты курсора на экране
+	int width;	// Ширина экрана
+	int height;	// Высота экрана
+	size_t disp;	// Позиция символа, с которого начинается видимая область документа
+	size_t buf_len;	// Размер буфера под документ
+	char fname[FNAME_LEN];	// Имя открытого файла
+	char* doc;	// Буфер для открытого документа
 } ed = { 0, 0, 0, 0, 0, 0, 0, 0, NO_FILE };
+/*
+Переменная x соответствует горизонтальной координате экрана ncurses,
+а величина y - это номер линни воображаемого экрана, который занимет
+весь документ целиком
+Координата y экрана ncurses при этом определяется как ed.y - ed.disp
+*/
 
 
 void add_letter(const char c)
 {
+	// Если добавляем букву не в конец документа, то передвигаем каждый символ
+	// от курсора до конца на одну позицию вправо
 	if (ed.pos < ed.size)
 		for (int i = ed.size; i > ed.pos; --i)
 			ed.doc[i] = ed.doc[i - 1];
+	// Вставляем новый символ в текущую позицию и увеличиваем её на единицу
 	ed.doc[ed.pos++] = c;
-	++ed.size;
-	if (ed.size > ed.buf_len - (BLOCK_SIZE >> 2))
+	// Увеличиваем размер документа на единицу и проверяем,
+	// не заканчивается ли место в буфере
+	if (++ed.size > ed.buf_len - (BLOCK_SIZE >> 2))
+		// Перезапрашиваем увеличенный объём памяти для буфера
 		ed.doc = realloc(ed.doc, ed.size + BLOCK_SIZE);
 }
 
 
 void backspase()
 {
+	// При удалении предыдущего символа происходит такая же перестановка,
+	// как и при добавлении, только в обратную сторону
 	if (! ed.pos)
 		return;
 	--ed.pos;
@@ -57,11 +70,15 @@ void print_on_screen()
 	printw("MyEdit - %s; line: %d; col: %d; pos: %d; size: %d", ed.fname, ed.y, ed.x, ed.pos, ed.size);
 	fill_line(1, '-');
 	move(FIRST_LINE, 0);
+	// Здесь сохраняется символ в позиции, следующей сразу за видимой областью текста
 	size_t tp = pos_by_xy(0, ed.disp + ed.height);
 	char tc = ed.doc[tp];
+	// Временно обнуляем этот байт, чтобы обозначить "конец строки" для printw
 	ed.doc[tp] = 0;
 	printw(ed.doc + pos_by_xy(0, ed.disp));
+	// Восстанавливаем символ вместо нуля
 	ed.doc[tp] = tc;
+	// Помещаем курсор терминала в нужные координаты
 	move(ed.y - ed.disp + FIRST_LINE, ed.x);
 	refresh();
 }
@@ -69,6 +86,12 @@ void print_on_screen()
 
 size_t pos_by_xy(const int x, const int y)
 {
+/*
+Здесь определяется позиция в документе, соответсвующая заданным
+координатам воображаемого экрана
+Для этого идёт подсчёт экранных линий rp в документе от начала и
+до момента пока не будет достигнуто заданное значение y
+*/
 	if (x < 0 || y < 0)
 		return 0;
 	size_t tx = 0, ty = 0;
@@ -82,6 +105,11 @@ size_t pos_by_xy(const int x, const int y)
 
 void line_down()
 {
+/*
+Ищем позицию в документе, соответствующую позиции курсора, смещённого
+на одну линию вниз. При этом учитываются переносы строк ('\n') в
+текущей и следующей линиях.
+*/
 	int current_line = TRUE;
 	for (int i = 0; i < ed.width && ed.pos < ed.size; ++i) {
 		if (ed.doc[ed.pos++] == '\n') {
@@ -104,6 +132,11 @@ void line_up()
 {
 	if (!ed.y)
 		return;
+/*
+Сначала устанавливаем позицию в начало предыдущей строки,
+а затем постепенно идём до координаты x, если строка не
+закончится раньше
+*/
 	ed.pos = pos_by_xy(0, ed.y - 1);
 	for (int i = 0; i < ed.x && ed.doc[ed.pos] != '\n'; ++i)
 		++ed.pos;
@@ -127,9 +160,17 @@ void step_back()
 void calc_xy()
 {
 	ed.y = ed.x = 0;
+/*
+Расставляем линии по воображаемому экрану, пока не доберёмся до
+текущей позиции в документе
+*/
 	for (int i = 0; i < ed.pos; ++i)
 		if (ed.doc[i] == '\n' || ++ed.x >= ed.width)
 			ed.x = 0, ++ed.y;
+/*
+Если курсор вышел за пределы видимой области, то смещаем эту область
+в нужную сторону через переменную ed.disp
+*/
 	if (ed.y < ed.disp)
 		ed.disp = ed.y;
 	if (ed.y >= ed.disp + ed.height)
@@ -137,21 +178,25 @@ void calc_xy()
 }
 
 
-long load_doc(const char* fname)
+int load_doc(const char* fname)
 {
-	ed.size = open_file(fname, ed.doc);
+	ed.size = open_file(fname, &ed.doc);
 	if (ed.size < 0) {
-		strcpy(ed.fname, "open error");
-		ed.size = 0;
-		return 1;
+//		strcpy(ed.doc, "open error");
+//		ed.size = 0;
+		return -1;
 	}
 	strcpy(ed.fname, fname);
 	ed.buf_len = ed.size + BLOCK_SIZE;
+
+	// Ищем и заменяем неподдерживаемые символы
 	for (char* it = ed.doc; *it; ++it)
 		if (*it == '\t')
 			*it = ' ';
 		else if (*it == '%')
 			*it = '/';
+
+	ed.pos = 5;
 	return 0;
 }
 
@@ -223,16 +268,15 @@ int save_doc()
 int ask_and_load()
 {
 	fill_line(0, ' ');
-//	mvprintw(0, 0, "Open file: ");
-	char name[FNAME_LEN] = "kilo.txt";
-/*
+	mvprintw(0, 0, "Open file: ");
+	char name[FNAME_LEN];
 	echo();
-	nocbreak();
 	getstr(name);
 	noecho();
-	cbreak();
-*/
-	return load_doc(name);
+	if (strlen(name))
+		return load_doc(name);
+	else
+		return -1;
 }
 
 
