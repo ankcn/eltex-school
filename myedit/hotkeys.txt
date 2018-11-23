@@ -1,0 +1,7 @@
+Hotkeys:
+CTRL + R, F3 - Open file
+CTRL + O, F2 - Save as
+CTRL + X, F10 - Exit
+CTRL + E, End - Go to end of paragraph
+CTRL + H, Home - Go to begin of paragraph
+PageUp, PageDown - Scroll pages

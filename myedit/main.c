@@ -13,6 +13,8 @@ int main(int argc, char** argv)
 	// пытаемся загрузить
 	if (argc == 2)
 		load_doc(argv[1]);
+	else
+		load_doc("hotkeys.txt");
 
 	int k = 0;	// Код клавиши, получаемой от терминала
 
@@ -63,12 +65,11 @@ int main(int argc, char** argv)
 			page_up();
 			break;
 		case KEY_F(2):
-		case WCTRL('S'):
+		case WCTRL('O'):
 			ask_and_save();
 			break;
 		case KEY_F(3):
-		case WCTRL('O'):
-			//load_doc("kilo.txt");
+		case WCTRL('R'):
 			ask_and_load();
 			break;
 		default:

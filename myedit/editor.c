@@ -8,7 +8,7 @@
 // Структура с параметрами редактора
 struct {
 	size_t pos;	// Текущая позиция в документе
-	size_t size;	// Размер документа
+	ssize_t size;	// Размер документа
 	size_t x, y;	// Координаты курсора на экране
 	int width;	// Ширина экрана
 	int height;	// Высота экрана
@@ -180,10 +180,14 @@ void calc_xy()
 
 int load_doc(const char* fname)
 {
+	ed.pos = 0;
 	ed.size = open_file(fname, &ed.doc);
 	if (ed.size < 0) {
-//		strcpy(ed.doc, "open error");
-//		ed.size = 0;
+		strcpy(ed.doc, "Could not open file: ");
+		strcat(ed.doc, fname);
+		strcpy(ed.fname, NO_FILE);
+		ed.size = FNAME_LEN;
+
 		return -1;
 	}
 	strcpy(ed.fname, fname);
@@ -196,7 +200,6 @@ int load_doc(const char* fname)
 		else if (*it == '%')
 			*it = '/';
 
-	ed.pos = 5;
 	return 0;
 }
 
@@ -265,15 +268,21 @@ int save_doc()
 }
 
 
-int ask_and_load()
+int ask_string(const char* question, char* answer)
 {
 	fill_line(0, ' ');
-	mvprintw(0, 0, "Open file: ");
-	char name[FNAME_LEN];
+	mvprintw(0, 0, question);
 	echo();
-	getstr(name);
+	getstr(answer);
 	noecho();
-	if (strlen(name))
+	return strlen(answer);
+}
+
+
+int ask_and_load()
+{
+	char name[FNAME_LEN];
+	if (ask_string("Open file: ", name))
 		return load_doc(name);
 	else
 		return -1;
@@ -282,15 +291,15 @@ int ask_and_load()
 
 int ask_and_save()
 {
-	fill_line(0, ' ');
-	mvprintw(0, 0, "Save as: ", ed.fname);
 	char name[FNAME_LEN];
-	echo();
-
-	getstr(name);
-	noecho();
-
-	return save_file(name, ed.doc, ed.size);
+	if (ask_string("Save as: ", name) && ! save_file(name, ed.doc, ed.size)) {
+		strcpy(ed.fname, name);
+		return 0;
+	}
+	else {
+		strcpy(ed.fname, "Error");
+		return -1;
+	}
 }
 
 
