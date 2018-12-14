@@ -1,26 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <curses.h>
-#include "interface.h"
+#include "manager.h"
 
 
-int main()
+int main(int argc, char** argv)
 {
 	prepare();
-//	scan_dir(".");
-//	print_panel();
+	scan_dir("/");
+	draw_panel();
+	switch_panel();
+	scan_dir("/");
+	draw_panel();
 
 	int k = 0;	// Код клавиши, получаемой от терминала
 
-	do {
-//		update_size();
-
-		switch (k) {
+	do switch (k) {
 		case KEY_UP:
-
+			get_up();
 			break;
 		case KEY_DOWN:
-
+			get_down();
 			break;
 		case KEY_END:
 		case WCTRL('E'):
@@ -38,14 +38,20 @@ int main()
 		case KEY_LEFT:
 
 			break;
-		case KEY_ENTER:
-
+		case '\n':
+			change_dir();
 			break;
-		}
-
-
+		case '\t':
+			switch_panel();
+			break;
+		case KEY_RESIZE:
+			draw_panel();
+			switch_panel();
+			draw_panel();
+			switch_panel();
+			break;
 	} while ((k = get_key()));
 
-	finish();
+	clean_up();
     return 0;
 }
