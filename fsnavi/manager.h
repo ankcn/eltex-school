@@ -44,6 +44,7 @@ typedef struct {
 	WINDOW* wnd;	// Окно ncurses для данной панели
 	bool highlight;	// Необходимость подсветки выбранного файла
 	char path[PATH_MAX];	// Полный путь к текущей директории
+	ssize_t start;
 } file_panel;
 
 
@@ -58,12 +59,6 @@ void list_files();
 
 // Сортировка файлов для отображения на панели
 void sort_panel();
-
-// Спустится вниз по спику файлов
-void get_down();
-
-// Подняться вверх по списку файлов
-void get_up();
 
 // Инициализация и определение параметров экрана ncurses
 void prepare();
@@ -85,6 +80,15 @@ void full_path(char* buf, const char* fname);
 
 // Получить родительский каталог для заданного пути
 void parent_dir(char* buf, const char* path);
+
+
+int max_lines();
+
+// Подняться вверх по списку файлов
+void move_up(int num);
+
+// Спустится вниз по спику файлов
+void move_down(int num);
 
 
 #endif // MANAGER_H_INCLUDED

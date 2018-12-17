@@ -17,10 +17,10 @@ int main(int argc, char** argv)
 
 	do switch (k) {
 		case KEY_UP:
-			get_up();
+			move_up(1);
 			break;
 		case KEY_DOWN:
-			get_down();
+			move_down(1);
 			break;
 		case KEY_END:
 		case WCTRL('E'):
@@ -32,11 +32,11 @@ int main(int argc, char** argv)
 			break;
 		case KEY_NPAGE:
 		case KEY_RIGHT:
-
+			move_down(max_lines());
 			break;
 		case KEY_PPAGE:
 		case KEY_LEFT:
-
+			move_up(max_lines());
 			break;
 		case '\n':
 			change_dir();

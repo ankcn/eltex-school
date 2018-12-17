@@ -79,6 +79,7 @@ int scan_dir(const char* path)
 
 	cp->count = 0;
 	cp->select = 0;
+	cp->start = 0;
 
 	// Когда успешно открыли новый каталог, делаем его путь текущим
 	strcpy(cp->path, path);
@@ -124,18 +125,20 @@ void  size_short(char* buf, ssize_t x)
 // Вывод на экран списка файлов текущего каталога
 void list_files()
 {
-	for (size_t i = 0; i < cp->count; ++i) {
-		file_info* fi = &(cp->files[i]);
-		if (i == cp->select && cp->highlight)
+	for (size_t i = 0; i < cp->count && i < max_lines(); ++i) {
+		file_info* fi = &(cp->files[i + cp->start]);
+		bool hl = (i + cp->start == cp->select) && cp->highlight;
+		if (hl)
 			wattron(cp->wnd, A_REVERSE);
-		mvwprintw(cp->wnd, INNER_OFFSET + i, INNER_OFFSET, "%c%s", fi->is_dir ? '/' : ' ', fi->name);
+		mvwprintw(cp->wnd, INNER_OFFSET + i, INNER_OFFSET, "%c", fi->is_dir ? '/' : ' ');
+		size_t attr_pos = getmaxx(cp->wnd) - ATTR_LENGTH;
+		waddnstr(cp->wnd, fi->name, attr_pos - INNER_OFFSET * 3);
 		char buf[TIME_STR_LEN];
 		size_short(buf, fi->size);
-		size_t attr_pos = getmaxx(cp->wnd) - ATTR_LENGTH;
 		mvwaddstr(cp->wnd, INNER_OFFSET + i, attr_pos, buf);
 		strftime(buf, TIME_STR_LEN, "%d.%m.%Y %T", &(fi->mtime));
 		mvwaddstr(cp->wnd, INNER_OFFSET + i, attr_pos + SIZE_LENGTH, buf);
-		if (i == cp->select)
+		if (hl)
 			wattroff(cp->wnd, A_REVERSE);
 	}
 	wrefresh(cp->wnd);
@@ -165,22 +168,43 @@ void sort_panel()
 	qsort(cp->files, cp->count, sizeof(file_info), cmp_adapter);
 }
 
-
-void get_down()
+int max_lines()
 {
-	if (cp->select < cp->count - 1) {
-		++cp->select;
-		list_files();
-	}
+	return getmaxy(cp->wnd) - INNER_OFFSET - 1;
 }
 
 
-void get_up()
+void move_up(int num)
 {
-	if (cp->select) {
-		--cp->select;
-		list_files();
+	if (! cp->select)
+		return;
+
+	if ((cp->select -= num) < 0)
+		cp->select = 0;
+
+	if (cp->start > cp->select) {
+		cp->start = cp->select;
+		draw_panel();
 	}
+	else
+		list_files();
+}
+
+
+void move_down(int num)
+{
+	if (cp->select == cp->count - 1)
+		return;
+
+	if ((cp->select += num) >= cp->count)
+		cp->select = cp->count - 1;
+
+	if (cp->select - cp->start >= max_lines()) {
+		cp->start = cp->select - max_lines() + 1;
+		draw_panel();
+	}
+	else
+		list_files();
 }
 
 
