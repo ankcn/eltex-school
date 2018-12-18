@@ -7,14 +7,8 @@
 int main(int argc, char** argv)
 {
 	prepare();
-	scan_dir("/");
-	draw_panel();
-	switch_panel();
-	scan_dir("/");
-	draw_panel();
 
 	int k = 0;	// Код клавиши, получаемой от терминала
-
 	do switch (k) {
 		case KEY_UP:
 			move_up(1);
@@ -24,11 +18,11 @@ int main(int argc, char** argv)
 			break;
 		case KEY_END:
 		case WCTRL('E'):
-
+			go_end();
 			break;
 		case KEY_HOME:
 		case WCTRL('H'):
-
+			go_top();
 			break;
 		case KEY_NPAGE:
 		case KEY_RIGHT:
@@ -45,13 +39,10 @@ int main(int argc, char** argv)
 			switch_panel();
 			break;
 		case KEY_RESIZE:
-			draw_panel();
-			switch_panel();
-			draw_panel();
-			switch_panel();
+			new_size();
 			break;
 	} while ((k = get_key()));
 
 	clean_up();
-    return 0;
+	return 0;
 }

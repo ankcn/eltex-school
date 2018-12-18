@@ -27,7 +27,7 @@ void free_names(file_panel* pnl)
 void add_file(const char* fname)
 {
 	// Текущий каталог не берём
-	if(! strcmp(fname, "."))
+	if((! strcmp(fname, ".")) || (is_root() && ! strcmp(fname, "..")))
 		return;
 
 	// Проверка свободного места в массиве
@@ -43,7 +43,7 @@ void add_file(const char* fname)
 	file_info* fi = &(cp->files[cp->count++]);
 
 	// Выделяем память под имя файла
-	size_t len = strlen(fname);
+	size_t len = strlen(fname) + 1;
 	char* slot = realloc(fi->name, len);
 	if (slot == NULL)
 		return;
@@ -53,7 +53,7 @@ void add_file(const char* fname)
 	fi->name = slot;
 
 	// Формируем полный путь к файлу
-	slot = malloc(strlen(fname) + strlen(cp->path) + 1);
+	slot = malloc(len + strlen(cp->path));
 	full_path(slot, fname);
 
 	// Получаем атрибуты файла: режим доступа, владелец, размер, дата и пр.
@@ -131,7 +131,7 @@ void list_files()
 		if (hl)
 			wattron(cp->wnd, A_REVERSE);
 		mvwprintw(cp->wnd, INNER_OFFSET + i, INNER_OFFSET, "%c", fi->is_dir ? '/' : ' ');
-		size_t attr_pos = getmaxx(cp->wnd) - ATTR_LENGTH;
+		size_t attr_pos = getmaxx(cp->wnd) - TIME_STR_LEN - SIZE_LENGTH;
 		waddnstr(cp->wnd, fi->name, attr_pos - INNER_OFFSET * 3);
 		char buf[TIME_STR_LEN];
 		size_short(buf, fi->size);
@@ -216,6 +216,12 @@ void prepare()
 	keypad(stdscr, TRUE);
 	cbreak();
 	refresh();
+
+	scan_dir("/");
+	draw_panel();
+	switch_panel();
+	scan_dir("/");
+	draw_panel();
 }
 
 
@@ -239,10 +245,10 @@ void draw_panel()
 	wborder(cp->wnd, '|', '|', '-', '-', '-', '-', '-', '-');
 	mvwprintw(cp->wnd, 0, INNER_OFFSET, "[%s]", cp->path);
 	mvwprintw(cp->wnd, INNER_OFFSET - 1, INNER_OFFSET + 1, "File name");
-	mvwprintw(cp->wnd, INNER_OFFSET - 1, wl - ATTR_LENGTH, "Size");
-	mvwprintw(cp->wnd, INNER_OFFSET - 1, wl - ATTR_LENGTH + SIZE_LENGTH, "Last change");
-	mvwvline(cp->wnd, 1, wl - ATTR_LENGTH - INNER_OFFSET, '|', my - 2);
-	mvwvline(cp->wnd, 1, wl - ATTR_LENGTH - INNER_OFFSET + SIZE_LENGTH, '|', my - 2);
+	mvwprintw(cp->wnd, INNER_OFFSET - 1, wl - TIME_STR_LEN - SIZE_LENGTH, "Size");
+	mvwprintw(cp->wnd, INNER_OFFSET - 1, wl - TIME_STR_LEN, "Last change");
+	mvwvline(cp->wnd, 1, wl - TIME_STR_LEN - SIZE_LENGTH - INNER_OFFSET, '|', my - 2);
+	mvwvline(cp->wnd, 1, wl - TIME_STR_LEN - INNER_OFFSET, '|', my - 2);
 	wrefresh(cp->wnd);
 	list_files();
 }
@@ -271,15 +277,27 @@ void change_dir()
 		return;
 
 	char name[FILENAME_MAX];
-	if (cp->select)
+	char current[FILENAME_MAX];
+	current[0] = 0;
+	if (cp->select || is_root())
+		// Если заходим в подкаталог
 		full_path(name, fi->name);
-	else if (strlen(cp->path) < MIN_PATH)
-		return;
 	else
-		parent_dir(name, cp->path);
+		// А иначе - выходим в родительский
+		parent_dir(name, current, cp->path);
 
-	if (! scan_dir(name))
+	if (! scan_dir(name)) {
+/*
+Текущий каталог current у нас определён, когда мы выходим в родительский.
+В этом случае перебираем его содержимое в поисках директории, которую
+только что покинули. Её номер присваиваем выбранному файлу.
+*/
+		if (*current)
+			for (int i = 0; i < cp->count && ! cp->select; ++i)
+				if (! strcmp(current, cp->files[i].name))
+					cp->select = i;
 		draw_panel();
+	}
 }
 
 
@@ -290,15 +308,58 @@ void full_path(char* buf, const char* fname)
 }
 
 
-void parent_dir(char* buf, const char* path)
+void parent_dir(char* par, char* cur, const char* path)
 {
 	bool parent = FALSE;
+	int e = 0;
 	for (int i = strlen(path) - 2; i >= 0; --i) {
-		if(! parent && path[i] == '/') {
-			parent = TRUE;
-			buf[i + 1] = 0;
-		}
+/*
+Идём с конца строки, содержащей полный путь, ищем косую черту, 
+которую считаем разделителем между именем текущего каталога и 
+полным путём к родительскому.
+После того, как нашли - запоминаем позицию и копируем остаток.
+Получили полный путь родителя в par[].
+*/
 		if (parent)
-			buf[i] = path[i];
+			par[i] = path[i];
+		else if(path[i] == '/') {
+			parent = TRUE;
+			par[e = i + 1] = 0;
+		}
 	}
+/*
+Используя найденную ранее позицю разделителя, копируем имя 
+текущей директории в cur[].
+*/
+	while((*cur++ = path[e++]));
+	*(cur - 2) = 0;	// Затираем косую черту в конце имени
+}
+
+
+bool is_root()
+{
+	return (bool) ! strcmp(cp->path, "/");
+}
+
+
+void go_top()
+{
+	cp->select = 0;
+	cp->start = 0;
+	draw_panel();
+}
+
+
+void go_end()
+{
+	move_down(cp->count);
+}
+
+
+void new_size()
+{
+	draw_panel();
+	switch_panel();
+	draw_panel();
+	switch_panel();
 }
