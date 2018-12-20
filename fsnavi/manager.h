@@ -21,6 +21,13 @@
 // Макрос для получения кода сочетания клавиш CTRL + (k)
 #define WCTRL(k)	(k - 0100)
 
+// Как найти редактор файлов
+#define EDITOR_REL_PATH	"/../myedit/myedit"
+#define EDITOR_FIRST_ARGUMENT	"myedit"
+
+// Объём данных в начале файла для анализа
+#define TEXT_SIZE_FOR_ANALYSE	2222
+
 
 // Варианты панелей: левая и правая
 typedef enum { P_LEFT, P_RIGHT } side_t;
@@ -72,8 +79,8 @@ void draw_panel();
 // Переключиться на другую панель
 void switch_panel();
 
-// Сменить директорию на выбранную
-void change_dir();
+// Сменить директорию на заданную
+void change_dir(const char* dirname);
 
 // Получить полный путь к файлу из его имени и текущей директории
 void full_path(char* buf, const char* fname);
@@ -101,6 +108,15 @@ void go_end();
 
 // Переотрисовка экрана после изменения размера терминала
 void new_size();
+
+// Обработка нажатия клавиши Enter
+void enter();
+
+// Запуск редактора файлов
+int start_editor(const char* fname);
+
+// Перевести экран терминала в режим curses
+void switch_to_curses_mode();
 
 
 #endif // MANAGER_H_INCLUDED

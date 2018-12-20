@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include "manager.h"
 
 
@@ -11,6 +13,9 @@ file_panel lpanel = { P_LEFT, 0, 0, 0 }, rpanel = { P_RIGHT, 0, 0, 0 };
 
 // Текущая (активная) панель
 file_panel* cp = &rpanel;
+
+// Полный путь к редактору файлов
+char editor_path[PATH_MAX];
 
 
 // Освобождение памяти
@@ -26,7 +31,7 @@ void free_names(file_panel* pnl)
 // Добавление информации о файле в список
 void add_file(const char* fname)
 {
-	// Текущий каталог не берём
+	// Текущий каталог и родительский для root не берём
 	if((! strcmp(fname, ".")) || (is_root() && ! strcmp(fname, "..")))
 		return;
 
@@ -145,8 +150,8 @@ void list_files()
 }
 
 /*
-Функция - адаптер к библитечной функции сравнения строк strcmp
-для передачи в качестве параметра в функию сортировки qsort
+Функция - адаптер к библиотечной функции сравнения строк strcmp
+для передачи в качестве параметра в функцию сортировки qsort
 При этом вводится дополнительный критерий сравнения, разделяющий
 файлы и директории
 */
@@ -210,18 +215,25 @@ void move_down(int num)
 
 void prepare()
 {
-	initscr();
-	noecho();
-	curs_set(FALSE);
-	keypad(stdscr, TRUE);
-	cbreak();
-	refresh();
+	switch_to_curses_mode();
 
-	scan_dir("/");
+	// Выясняем текущую директорию и отображаем её содержимое
+	char path[PATH_MAX];
+	getcwd(path, PATH_MAX);
+	scan_dir(path);
 	draw_panel();
 	switch_panel();
-	scan_dir("/");
+	scan_dir(path);
 	draw_panel();
+
+/*
+Берём полный путь к исполняемому файлу данной программы, то есть менеджера файлов,
+и, полагая, что файловый редактор находится в соседней директории, формируем 
+путь для запуска редактора
+*/
+	readlink("/proc/self/exe", path, PATH_MAX);
+	parent_dir(editor_path, NULL, path);
+	strcat(editor_path, EDITOR_REL_PATH);
 }
 
 
@@ -269,24 +281,19 @@ void switch_panel()
 }
 
 
-void change_dir()
+void change_dir(const char* dirname)
 {
-	// Указатель на выбранный файл
-	file_info* fi = &cp->files[cp->select];
-	if(! fi->is_dir)
-		return;
-
-	char name[FILENAME_MAX];
+	char path[PATH_MAX];
 	char current[FILENAME_MAX];
 	current[0] = 0;
 	if (cp->select || is_root())
 		// Если заходим в подкаталог
-		full_path(name, fi->name);
+		full_path(path, dirname);
 	else
 		// А иначе - выходим в родительский
-		parent_dir(name, current, cp->path);
+		parent_dir(path, current, cp->path);
 
-	if (! scan_dir(name)) {
+	if (! scan_dir(path)) {
 /*
 Текущий каталог current у нас определён, когда мы выходим в родительский.
 В этом случае перебираем его содержимое в поисках директории, которую
@@ -314,8 +321,8 @@ void parent_dir(char* par, char* cur, const char* path)
 	int e = 0;
 	for (int i = strlen(path) - 2; i >= 0; --i) {
 /*
-Идём с конца строки, содержащей полный путь, ищем косую черту, 
-которую считаем разделителем между именем текущего каталога и 
+Идём с конца строки, содержащей полный путь, ищем косую черту,
+которую считаем разделителем между именем текущего каталога и
 полным путём к родительскому.
 После того, как нашли - запоминаем позицию и копируем остаток.
 Получили полный путь родителя в par[].
@@ -324,15 +331,18 @@ void parent_dir(char* par, char* cur, const char* path)
 			par[i] = path[i];
 		else if(path[i] == '/') {
 			parent = TRUE;
-			par[e = i + 1] = 0;
+			par[e = i] = '/';
+			par[i + 1] = 0;
 		}
 	}
 /*
-Используя найденную ранее позицю разделителя, копируем имя 
+Используя найденную ранее позицю разделителя, копируем имя
 текущей директории в cur[].
 */
-	while((*cur++ = path[e++]));
-	*(cur - 2) = 0;	// Затираем косую черту в конце имени
+	if (cur) {
+		while((*cur++ = path[++e]));
+		*(cur - 2) = 0;	// Затираем косую черту в конце имени
+	}
 }
 
 
@@ -362,4 +372,69 @@ void new_size()
 	switch_panel();
 	draw_panel();
 	switch_panel();
+}
+
+
+void enter()
+{
+	// Указатель на выбранный файл
+	file_info* fi = &cp->files[cp->select];
+	if (fi->is_dir)
+		// Если выбрана директория, то переходим в неё
+		change_dir(fi->name);
+	else {
+/*
+В противном случае полагаем, что выбран обычный файл и пытаемся его открыть
+и прочиать некоторое количество байт. Если попались только ASCII символы,
+то считаем файл текстовым и открываем его в редакторе.
+*/
+		char path[PATH_MAX];
+		full_path(path, fi->name);
+		FILE* tf = fopen(path, "r");
+		if (tf) {
+			bool is_text = TRUE;
+			int i = 0, c = 0;
+			while ((c = fgetc(tf)) != EOF && ++i < TEXT_SIZE_FOR_ANALYSE)
+				is_text &= (c < 0x80);
+			fclose(tf);
+			if (is_text)
+				start_editor(path);
+		}
+	}
+}
+
+
+int start_editor(const char* fname)
+{
+	// Создаём копию процесса
+	pid_t pid = fork();
+	if (pid < 0)
+		return 1;
+	else if (pid > 0) {
+/*
+В родительском процессе восстанавливаем обычный режим экрана,
+ждём завершения работы дочернего процесса, после чего снова 
+переключаем экран терминала в режим curses и отрисовываем интерфейс.
+*/
+		endwin();
+		int st;
+		pid = wait(&st);
+		switch_to_curses_mode();
+		new_size();
+	} else
+		// В дочернем процессе запускаем файловый редактор
+		if (execl(editor_path, EDITOR_FIRST_ARGUMENT, fname, NULL) == -1)
+			exit(EXIT_FAILURE);
+	return 0;
+}
+
+
+void switch_to_curses_mode()
+{
+	initscr();
+	noecho();
+	curs_set(FALSE);
+	keypad(stdscr, TRUE);
+	cbreak();
+	refresh();
 }

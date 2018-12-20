@@ -32,8 +32,9 @@ int main(int argc, char** argv)
 		case KEY_LEFT:
 			move_up(max_lines());
 			break;
+		case KEY_ENTER:
 		case '\n':
-			change_dir();
+			enter();
 			break;
 		case '\t':
 			switch_panel();
