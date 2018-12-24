@@ -41,7 +41,7 @@ typedef struct {
 	unsigned int mode_bits, uid, gid;	// Владелец, группа и права доступа
 } file_info;
 
-// Тип структуры, описывающий содержимое директории, открытой в панели менеджера файлов
+// Тип структуры, описывающей содержимое директории, открытой в панели менеджера файлов
 typedef struct {
 	const side_t side;	// Сторона
 	ssize_t count;	// Количество файлов в директории
@@ -55,17 +55,11 @@ typedef struct {
 } file_panel;
 
 
-// Просмотр содержимого директории
-int scan_dir(const char* path);
-
 // Высвобождение ресурсов
 void clean_up();
 
-// Нарисовать панель
+// Отобразить список файлов в текущей панели
 void list_files();
-
-// Сортировка файлов для отображения на панели
-void sort_panel();
 
 // Инициализация и определение параметров экрана ncurses
 void prepare();
@@ -82,12 +76,6 @@ void switch_panel();
 // Сменить директорию на заданную
 void change_dir(const char* dirname);
 
-// Получить полный путь к файлу из его имени и текущей директории
-void full_path(char* buf, const char* fname);
-
-// Получить родительский и текущий каталог от заданного полного пути
-void parent_dir(char* par, char* cur, const char* path);
-
 // Определить максимальное количество файлов, которые можно отобразить одновременно
 int max_lines();
 
@@ -96,9 +84,6 @@ void move_up(int num);
 
 // Спустится вниз по спику файлов на заданное количество позиций
 void move_down(int num);
-
-// Проверка, не является ли текущая директория корневой
-bool is_root();
 
 // Перейти наверх списка файлов
 void go_top();
@@ -112,11 +97,45 @@ void new_size();
 // Обработка нажатия клавиши Enter
 void enter();
 
-// Запуск редактора файлов
-int start_editor(const char* fname);
+
+#ifdef MONITOR_C
+
+// Просмотр содержимого директории
+static int scan_dir(const char* path);
+
+// Получить полный путь к файлу из его имени и текущей директории
+static void full_path(char* buf, const char* fname);
+
+// Получить родительский и текущий каталог от заданного полного пути
+static void parent_dir(char* par, char* cur, const char* path);
+
+// Проверка, не является ли текущая директория корневой
+static bool is_root();
+
+// Сортировка файлов, обнаруженных в директории
+static void sort_panel();
+
+// Запуск внешнего редактора файлов
+static int start_editor(const char* fname);
 
 // Перевести экран терминала в режим curses
-void switch_to_curses_mode();
+static void switch_to_curses_mode();
+
+// Освобождение памяти, выделенной под имена файлов
+static void free_names(file_panel* pnl);
+
+// Добавление информации о файле в список
+static void add_file(const char* fname);
+
+// Представление размера файла в коротком виде с множителем (кило, Мега и т.п.)
+static void  size_short(char* buf, ssize_t x);
+
+// Функция сравнения имён файлов
+static int cmp_adapter(const void* a, const void* b);
+
+
+#endif // MONITOR_C
 
 
 #endif // MANAGER_H_INCLUDED
+

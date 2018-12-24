@@ -1,3 +1,5 @@
+#define MONITOR_C
+
 #include <stdio.h>
 #include <dirent.h>
 #include <stdlib.h>
@@ -9,27 +11,28 @@
 
 
 // Левая и правая паенели файлового менеджера
-file_panel lpanel = { P_LEFT, 0, 0, 0 }, rpanel = { P_RIGHT, 0, 0, 0 };
+static file_panel lpanel = { P_LEFT, 0, 0, 0 }, rpanel = { P_RIGHT, 0, 0, 0 };
 
 // Текущая (активная) панель
-file_panel* cp = &rpanel;
+static file_panel* cp = &rpanel;
 
 // Полный путь к редактору файлов
-char editor_path[PATH_MAX];
+static char editor_path[PATH_MAX];
 
 
 // Освобождение памяти
-void free_names(file_panel* pnl)
+static void free_names(file_panel* pnl)
 {
 	for (size_t i = 0; i < pnl->count; ++i)
 		free(pnl->files[i].name);
 	pnl->count = 0;
 	free(pnl->files);
 	pnl->space = 0;
+	delwin(pnl->wnd);
 }
 
 // Добавление информации о файле в список
-void add_file(const char* fname)
+static void add_file(const char* fname)
 {
 	// Текущий каталог и родительский для root не берём
 	if((! strcmp(fname, ".")) || (is_root() && ! strcmp(fname, "..")))
@@ -74,7 +77,7 @@ void add_file(const char* fname)
 }
 
 
-int scan_dir(const char* path)
+static int scan_dir(const char* path)
 {
 	struct dirent* fentry;
 	DIR* dir = opendir(path);
@@ -112,8 +115,8 @@ void clean_up()
 	free_names(&rpanel);
 }
 
-// Представление размера файла в коротком виде с суффиксом (кило, Мега и т.п.)
-void  size_short(char* buf, ssize_t x)
+// Представление размера файла в коротком виде с множителем (кило, Мега и т.п.)
+static void  size_short(char* buf, ssize_t x)
 {
 	char m = ' ';
 	if (x > 1L << 40)
@@ -155,7 +158,7 @@ void list_files()
 При этом вводится дополнительный критерий сравнения, разделяющий
 файлы и директории
 */
-int cmp_adapter(const void* a, const void* b)
+static int cmp_adapter(const void* a, const void* b)
 {
 	file_info* fa = (file_info*) a;
 	file_info* fb = (file_info*) b;
@@ -168,10 +171,11 @@ int cmp_adapter(const void* a, const void* b)
 }
 
 
-void sort_panel()
+static void sort_panel()
 {
 	qsort(cp->files, cp->count, sizeof(file_info), cmp_adapter);
 }
+
 
 int max_lines()
 {
@@ -228,7 +232,7 @@ void prepare()
 
 /*
 Берём полный путь к исполняемому файлу данной программы, то есть менеджера файлов,
-и, полагая, что файловый редактор находится в соседней директории, формируем 
+и, полагая, что файловый редактор находится в соседней директории, формируем
 путь для запуска редактора
 */
 	readlink("/proc/self/exe", path, PATH_MAX);
@@ -308,14 +312,14 @@ void change_dir(const char* dirname)
 }
 
 
-void full_path(char* buf, const char* fname)
+static void full_path(char* buf, const char* fname)
 {
 	strcpy(buf, cp->path);
 	strcat(buf, fname);
 }
 
 
-void parent_dir(char* par, char* cur, const char* path)
+static void parent_dir(char* par, char* cur, const char* path)
 {
 	bool parent = FALSE;
 	int e = 0;
@@ -346,7 +350,7 @@ void parent_dir(char* par, char* cur, const char* path)
 }
 
 
-bool is_root()
+static bool is_root()
 {
 	return (bool) ! strcmp(cp->path, "/");
 }
@@ -404,7 +408,7 @@ void enter()
 }
 
 
-int start_editor(const char* fname)
+static int start_editor(const char* fname)
 {
 	// Создаём копию процесса
 	pid_t pid = fork();
@@ -413,7 +417,7 @@ int start_editor(const char* fname)
 	else if (pid > 0) {
 /*
 В родительском процессе восстанавливаем обычный режим экрана,
-ждём завершения работы дочернего процесса, после чего снова 
+ждём завершения работы дочернего процесса, после чего снова
 переключаем экран терминала в режим curses и отрисовываем интерфейс.
 */
 		endwin();
@@ -429,7 +433,7 @@ int start_editor(const char* fname)
 }
 
 
-void switch_to_curses_mode()
+static void switch_to_curses_mode()
 {
 	initscr();
 	noecho();
