@@ -22,11 +22,14 @@
 #define WCTRL(k)	(k - 0100)
 
 // Как найти редактор файлов
-#define EDITOR_REL_PATH	"/../myedit/myedit"
+#define EDITOR_REL_PATH	"/../myedit/bin/myedit"
 #define EDITOR_FIRST_ARGUMENT	"myedit"
 
 // Объём данных в начале файла для анализа
 #define TEXT_SIZE_FOR_ANALYSE	2222
+
+//
+#define COPY_BLOCK_SIZE	0x10000
 
 
 // Варианты панелей: левая и правая
@@ -92,10 +95,12 @@ void go_top();
 void go_end();
 
 // Переотрисовка экрана после изменения размера терминала
-void new_size();
+void redraw();
 
 // Обработка нажатия клавиши Enter
 void enter();
+
+void start_copy();
 
 
 #ifdef MONITOR_C
@@ -133,6 +138,19 @@ static void  size_short(char* buf, ssize_t x);
 // Функция сравнения имён файлов
 static int cmp_adapter(const void* a, const void* b);
 
+static file_info* selected_file();
+
+static file_panel* get_other_panel();
+
+static void copy_file(const char* fname, const char* dest);
+
+static void copy_dir(const char* dirname, const char* dest);
+
+static void print_status(const char* msg);
+
+static void* panel_copy(void*);
+
+static void* show_progress(void* par);
 
 #endif // MONITOR_C
 

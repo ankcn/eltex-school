@@ -7,6 +7,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "manager.h"
 
 
@@ -18,6 +21,12 @@ static file_panel* cp = &rpanel;
 
 // Полный путь к редактору файлов
 static char editor_path[PATH_MAX];
+
+//
+static WINDOW* statusbar;
+
+//
+static float progress;
 
 
 // Освобождение памяти
@@ -60,20 +69,15 @@ static void add_file(const char* fname)
 	strcpy(slot, fname);
 	fi->name = slot;
 
-	// Формируем полный путь к файлу
-	slot = malloc(len + strlen(cp->path));
-	full_path(slot, fname);
-
 	// Получаем атрибуты файла: режим доступа, владелец, размер, дата и пр.
 	struct stat attributes;
-	stat(slot, &attributes);
+	stat(fname, &attributes);
 	fi->mtime = *(localtime(&attributes.st_ctime));
 	fi->size = attributes.st_size;
 	fi->is_dir = S_ISDIR(attributes.st_mode);
 	fi->mode_bits = attributes.st_mode;
 	fi->uid = attributes.st_uid;
 	fi->gid = attributes.st_gid;
-	free(slot);
 }
 
 
@@ -96,6 +100,9 @@ static int scan_dir(const char* path)
 	if (cp->path[strlen(cp->path) - 1] != '/')
 		strcat(cp->path, "/");
 
+	//
+	chdir (cp->path);
+
 	// Обходим содержимое директории, добавляем найденные файлы в коллекцию
 	while ((fentry = readdir(dir)))
 		add_file(fentry->d_name);
@@ -113,6 +120,8 @@ void clean_up()
 	endwin();
 	free_names(&lpanel);
 	free_names(&rpanel);
+	if (statusbar)
+		delwin(statusbar);
 }
 
 // Представление размера файла в коротком виде с множителем (кило, Мега и т.п.)
@@ -150,6 +159,7 @@ void list_files()
 			wattroff(cp->wnd, A_REVERSE);
 	}
 	wrefresh(cp->wnd);
+	print_status(" ");
 }
 
 /*
@@ -225,10 +235,9 @@ void prepare()
 	char path[PATH_MAX];
 	getcwd(path, PATH_MAX);
 	scan_dir(path);
-	draw_panel();
 	switch_panel();
 	scan_dir(path);
-	draw_panel();
+	redraw();
 
 /*
 Берём полный путь к исполняемому файлу данной программы, то есть менеджера файлов,
@@ -253,18 +262,19 @@ void draw_panel()
 	if (cp->wnd)
 		delwin(cp->wnd);
 
-	size_t mx, my, wl;
+	size_t mx, my, wl, wh;
 	getmaxyx(stdscr, my, mx);
 	wl = mx >> 1;
-	cp->wnd = newwin(0, wl, 0, (cp->side == P_LEFT) ? 0 : wl);
+	wh = my - 1;
+	cp->wnd = newwin(wh, wl, 0, (cp->side == P_LEFT) ? 0 : wl);
 
 	wborder(cp->wnd, '|', '|', '-', '-', '-', '-', '-', '-');
 	mvwprintw(cp->wnd, 0, INNER_OFFSET, "[%s]", cp->path);
 	mvwprintw(cp->wnd, INNER_OFFSET - 1, INNER_OFFSET + 1, "File name");
 	mvwprintw(cp->wnd, INNER_OFFSET - 1, wl - TIME_STR_LEN - SIZE_LENGTH, "Size");
 	mvwprintw(cp->wnd, INNER_OFFSET - 1, wl - TIME_STR_LEN, "Last change");
-	mvwvline(cp->wnd, 1, wl - TIME_STR_LEN - SIZE_LENGTH - INNER_OFFSET, '|', my - 2);
-	mvwvline(cp->wnd, 1, wl - TIME_STR_LEN - INNER_OFFSET, '|', my - 2);
+	mvwvline(cp->wnd, 1, wl - TIME_STR_LEN - SIZE_LENGTH - INNER_OFFSET, '|', wh - 2);
+	mvwvline(cp->wnd, 1, wl - TIME_STR_LEN - INNER_OFFSET, '|', wh - 2);
 	wrefresh(cp->wnd);
 	list_files();
 }
@@ -275,12 +285,11 @@ void switch_panel()
 	// Сбрасываем подсветку выбранного файла перед сменой панели
 	cp->highlight = FALSE;
 	list_files();
-	if (cp->side == P_LEFT)
-		cp = &rpanel;
-	else
-		cp = &lpanel;
+	cp = get_other_panel();
+
 	// На панели, в которую перешли, включаем подсветку выбранного файла
 	cp->highlight = TRUE;
+	chdir(cp->path);
 	list_files();
 }
 
@@ -309,6 +318,8 @@ void change_dir(const char* dirname)
 					cp->select = i;
 		draw_panel();
 	}
+	else
+		print_status("Error opening directory");
 }
 
 
@@ -370,19 +381,37 @@ void go_end()
 }
 
 
-void new_size()
+void redraw()
 {
 	draw_panel();
 	switch_panel();
 	draw_panel();
 	switch_panel();
+
+	if (statusbar)
+		delwin(statusbar);
+	statusbar = newwin(0, 0, getmaxy(stdscr) - 1, 0);
+}
+
+
+static void print_status(const char* msg)
+{
+	werase(statusbar);
+	mvwaddstr(statusbar, 0, 1, msg);
+	wrefresh(statusbar);
+}
+
+
+static file_info* selected_file()
+{
+	return &cp->files[cp->select];
 }
 
 
 void enter()
 {
 	// Указатель на выбранный файл
-	file_info* fi = &cp->files[cp->select];
+	file_info* fi = selected_file();
 	if (fi->is_dir)
 		// Если выбрана директория, то переходим в неё
 		change_dir(fi->name);
@@ -403,7 +432,11 @@ void enter()
 			fclose(tf);
 			if (is_text)
 				start_editor(path);
+			else
+				print_status("Selected file can't be opened in editor");
 		}
+		else
+			print_status("Can't access this file");
 	}
 }
 
@@ -424,7 +457,11 @@ static int start_editor(const char* fname)
 		int st;
 		pid = wait(&st);
 		switch_to_curses_mode();
-		new_size();
+		redraw();
+		if (st)
+			print_status("Failure exit from editor");
+		else
+			print_status("Normal exit from editor");
 	} else
 		// В дочернем процессе запускаем файловый редактор
 		if (execl(editor_path, EDITOR_FIRST_ARGUMENT, fname, NULL) == -1)
@@ -441,4 +478,111 @@ static void switch_to_curses_mode()
 	keypad(stdscr, TRUE);
 	cbreak();
 	refresh();
+}
+
+
+static void copy_file(const char* fname, const char* dest)
+{
+	int src_fd, dst_fd;
+	src_fd = open(fname, O_RDONLY);
+	if (src_fd <= 0) {
+		print_status("Error opening source file");
+		return;
+	}
+
+	dst_fd = open(dest, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+	if (dst_fd <= 0) {
+		close(src_fd);
+		print_status("Error opening destination file");
+		return;
+	}
+
+	// Определение размера файла
+	long fsize = (long) lseek(src_fd, 0, SEEK_END);
+	if (fsize < 0) {
+		close(src_fd);
+		print_status("Error gathering file size");
+		return;
+	}
+
+	progress = 0;
+	char buf[COPY_BLOCK_SIZE];
+	ssize_t sz, readed = 0;
+	if (fsize) while ((sz = read(src_fd, buf, COPY_BLOCK_SIZE))) {
+		progress = (readed += sz) / fsize;
+		write(dst_fd, buf, sz);
+		/*
+		mvwprintw(statusbar, 0, 0, "progress: %f", progress);
+		wrefresh(statusbar);
+		getchar();
+		*/
+	}
+
+	close(src_fd);
+	close(dst_fd);
+}
+
+
+static file_panel* get_other_panel()
+{
+	if (cp->side == P_LEFT)
+		return &rpanel;
+	else
+		return &lpanel;
+}
+
+
+static void* panel_copy(void* par)
+{
+	file_info* fi = selected_file();
+	char dstp[FILENAME_MAX];
+
+	cp = get_other_panel();
+	full_path(dstp, fi->name);
+
+	if (fi->is_dir)
+		copy_dir(fi->name, dstp);
+	else
+		copy_file(fi->name, dstp);
+
+	scan_dir(cp->path);
+	draw_panel();
+	cp = get_other_panel();
+
+	return par;
+}
+
+
+static void copy_dir(const char* dirname, const char* dest)
+{
+	print_status("Directory copying not supported yet");
+}
+
+
+void start_copy()
+{
+	if (! cp->select)
+		return;
+	pthread_t copy_thread, progress_thread;
+	pthread_create(&copy_thread, NULL, panel_copy, NULL);
+	pthread_create(&progress_thread, NULL, show_progress, NULL);
+	pthread_join(copy_thread, NULL);
+	pthread_cancel(progress_thread);
+}
+
+
+static void* show_progress(void* par)
+{
+	print_status("Copy progress: ");
+	ssize_t pw = getmaxx(statusbar) - getcurx(statusbar) - 1;
+	ssize_t i = 0, old = 0;
+	while (i < pw) {
+		i = progress * pw;
+		if (i != old) {
+			whline(statusbar, '!', i - old);
+			wrefresh(statusbar);
+			old = i;
+		}
+	}
+	return par;
 }

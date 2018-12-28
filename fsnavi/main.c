@@ -40,7 +40,10 @@ int main(int argc, char** argv)
 			switch_panel();
 			break;
 		case KEY_RESIZE:
-			new_size();
+			redraw();
+			break;
+		case KEY_F(5):
+			start_copy();
 			break;
 	} while ((k = get_key()));
 
