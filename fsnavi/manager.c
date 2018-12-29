@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h>
 #include "manager.h"
 
 
@@ -22,11 +23,11 @@ static file_panel* cp = &rpanel;
 // Полный путь к редактору файлов
 static char editor_path[PATH_MAX];
 
-//
+// Окно статуса
 static WINDOW* statusbar;
 
-//
-static float progress;
+// Прогресс копирования (от 0 до 1)
+static float progress = 0;
 
 
 // Освобождение памяти
@@ -61,6 +62,7 @@ static void add_file(const char* fname)
 
 	// Выделяем память под имя файла
 	size_t len = strlen(fname) + 1;
+
 	char* slot = realloc(fi->name, len);
 	if (slot == NULL)
 		return;
@@ -80,7 +82,10 @@ static void add_file(const char* fname)
 	fi->gid = attributes.st_gid;
 }
 
-
+/*
+ * scan_dir - Просмотр содержимого директории
+ * @path: путь для просмотра
+ */
 static int scan_dir(const char* path)
 {
 	struct dirent* fentry;
@@ -96,12 +101,11 @@ static int scan_dir(const char* path)
 	// Когда успешно открыли новый каталог, делаем его путь текущим
 	strcpy(cp->path, path);
 
-	// Если в конце пути нет косой черты, добавляем её
-	if (cp->path[strlen(cp->path) - 1] != '/')
-		strcat(cp->path, "/");
+	// Проверям и корректируем окончание пути
+	check_path(cp->path);
 
-	//
-	chdir (cp->path);
+	// Задаём текущий рабочий каталог
+	chdir(cp->path);
 
 	// Обходим содержимое директории, добавляем найденные файлы в коллекцию
 	while ((fentry = readdir(dir)))
@@ -114,7 +118,9 @@ static int scan_dir(const char* path)
 	return 0;
 }
 
-
+/*
+ * clean_up - Высвобождение ресурсов
+ */
 void clean_up()
 {
 	endwin();
@@ -125,7 +131,7 @@ void clean_up()
 }
 
 // Представление размера файла в коротком виде с множителем (кило, Мега и т.п.)
-static void  size_short(char* buf, ssize_t x)
+static void  size_short(char* buf, size_t x)
 {
 	char m = ' ';
 	if (x > 1L << 40)
@@ -140,26 +146,33 @@ static void  size_short(char* buf, ssize_t x)
 }
 
 // Вывод на экран списка файлов текущего каталога
-void list_files()
+static void list_files()
 {
-	for (size_t i = 0; i < cp->count && i < max_lines(); ++i) {
+	if (! cp->wnd)
+		return;
+
+	for (ssize_t i = 0; i < cp->count && i < max_lines(); ++i) {
 		file_info* fi = &(cp->files[i + cp->start]);
 		bool hl = (i + cp->start == cp->select) && cp->highlight;
 		if (hl)
 			wattron(cp->wnd, A_REVERSE);
+
 		mvwprintw(cp->wnd, INNER_OFFSET + i, INNER_OFFSET, "%c", fi->is_dir ? '/' : ' ');
 		size_t attr_pos = getmaxx(cp->wnd) - TIME_STR_LEN - SIZE_LENGTH;
 		waddnstr(cp->wnd, fi->name, attr_pos - INNER_OFFSET * 3);
+
 		char buf[TIME_STR_LEN];
 		size_short(buf, fi->size);
 		mvwaddstr(cp->wnd, INNER_OFFSET + i, attr_pos, buf);
 		strftime(buf, TIME_STR_LEN, "%d.%m.%Y %T", &(fi->mtime));
 		mvwaddstr(cp->wnd, INNER_OFFSET + i, attr_pos + SIZE_LENGTH, buf);
+
 		if (hl)
 			wattroff(cp->wnd, A_REVERSE);
 	}
+
 	wrefresh(cp->wnd);
-	print_status(" ");
+	print_status("");
 }
 
 /*
@@ -180,20 +193,30 @@ static int cmp_adapter(const void* a, const void* b)
 		return strcmp(fa->name, fb->name);
 }
 
-
+/* 
+ * sort_panel - Сортировка файлов, обнаруженных в директории
+ */
 static void sort_panel()
 {
 	qsort(cp->files, cp->count, sizeof(file_info), cmp_adapter);
 }
 
-
+/*
+ * max_lines - получение максимального количества линий панели
+ * 
+ * Функция определяет максимальное количество файлов, 
+ * которые можно отобразить одновременно на панели менеджера
+ */
 int max_lines()
 {
 	return getmaxy(cp->wnd) - INNER_OFFSET - 1;
 }
 
-
-void move_up(int num)
+/*
+ * move_up - Подняться вверх по списку файлов на заданное количество позиций
+ * @num: количество позиций для перехода
+ */
+void move_up(size_t num)
 {
 	if (! cp->select)
 		return;
@@ -209,8 +232,11 @@ void move_up(int num)
 		list_files();
 }
 
-
-void move_down(int num)
+/*
+ * move_down - Спустится вниз по спику файлов на заданное количество позиций
+ * @num: количество позиций для перехода
+ */
+void move_down(size_t num)
 {
 	if (cp->select == cp->count - 1)
 		return;
@@ -226,8 +252,14 @@ void move_down(int num)
 		list_files();
 }
 
-
-void prepare()
+/*
+ * prepare - Подготовтельные мероприятия при запуске программы
+ * @dir: директория, которую следует открыть при старте
+ *
+ * Здесь выполняется переключение экрана в режим curses,
+ * сканирование начальных каталогов и отрисовка панелей
+ */
+void prepare(const char* dir)
 {
 	switch_to_curses_mode();
 
@@ -235,8 +267,9 @@ void prepare()
 	char path[PATH_MAX];
 	getcwd(path, PATH_MAX);
 	scan_dir(path);
-	switch_panel();
-	scan_dir(path);
+	cp = get_other_panel();
+	if (! dir || scan_dir(dir))
+		scan_dir(path);
 	redraw();
 
 /*
@@ -247,16 +280,22 @@ void prepare()
 	readlink("/proc/self/exe", path, PATH_MAX);
 	parent_dir(editor_path, NULL, path);
 	strcat(editor_path, EDITOR_REL_PATH);
+
+	print_status("Ready");
 }
 
-
+/*
+ * get_key - Получить код символа/клавиши
+ */
 int get_key()
 {
 	int a = getch();
 	return (a == WCTRL('X') || a == KEY_F(10)) ? 0 : a;
 }
 
-
+/*
+ * draw_panel - Отрисовка панели на экране терминала
+ */
 void draw_panel()
 {
 	if (cp->wnd)
@@ -279,7 +318,9 @@ void draw_panel()
 	list_files();
 }
 
-
+/*
+ * switch_panel - Переключиться на другую панель менеджера файлов
+ */
 void switch_panel()
 {
 	// Сбрасываем подсветку выбранного файла перед сменой панели
@@ -293,7 +334,10 @@ void switch_panel()
 	list_files();
 }
 
-
+/*
+ * change_dir - Сменить директорию на заданную
+ * @dirname: имя директории, куда надо зайти
+ */
 void change_dir(const char* dirname)
 {
 	char path[PATH_MAX];
@@ -322,14 +366,23 @@ void change_dir(const char* dirname)
 		print_status("Error opening directory");
 }
 
-
+/*
+ * full_path - Получить полный путь к файлу из его имени и текущей директории
+ * @buf: строка, в которую будет сохранён результат
+ * @fname: имя файла
+ */
 static void full_path(char* buf, const char* fname)
 {
 	strcpy(buf, cp->path);
 	strcat(buf, fname);
 }
 
-
+/*
+ * parent_dir - Получить родительский и текущий каталог от заданного полного пути
+ * @par: строка для сохранения полного пути к родительскому каталогу
+ * @cur: стока для сохранения имени текущего каталога
+ * @path: заданный путь
+ */
 static void parent_dir(char* par, char* cur, const char* path)
 {
 	bool parent = FALSE;
@@ -360,13 +413,17 @@ static void parent_dir(char* par, char* cur, const char* path)
 	}
 }
 
-
+/*
+ * is_root - Проверка, не является ли текущая директория корневой
+ */
 static bool is_root()
 {
 	return (bool) ! strcmp(cp->path, "/");
 }
 
-
+/*
+ * go_top - Перейти наверх списка файлов
+ */
 void go_top()
 {
 	cp->select = 0;
@@ -374,13 +431,17 @@ void go_top()
 	draw_panel();
 }
 
-
+/*
+ * go_end - Перейти на последний файл в директории
+ */
 void go_end()
 {
 	move_down(cp->count);
 }
 
-
+/*
+ * redraw - Переотрисовка экрана файлового менеджера
+ */
 void redraw()
 {
 	draw_panel();
@@ -393,7 +454,10 @@ void redraw()
 	statusbar = newwin(0, 0, getmaxy(stdscr) - 1, 0);
 }
 
-
+/*
+ * print_status - Печать статусного сообщения
+ * @msg: строка сообщения
+ */
 static void print_status(const char* msg)
 {
 	werase(statusbar);
@@ -401,13 +465,17 @@ static void print_status(const char* msg)
 	wrefresh(statusbar);
 }
 
-
+/*
+ * selected_file - Получение указателя на выбранный файл
+ */
 static file_info* selected_file()
 {
 	return &cp->files[cp->select];
 }
 
-
+/*
+ * enter - Обработка нажатия клавиши Enter
+ */
 void enter()
 {
 	// Указатель на выбранный файл
@@ -440,7 +508,10 @@ void enter()
 	}
 }
 
-
+/*
+ * start_editor - Запуск внешнего редактора файлов
+ * @fname: имя файла для открытия в редакторе
+ */
 static int start_editor(const char* fname)
 {
 	// Создаём копию процесса
@@ -469,7 +540,9 @@ static int start_editor(const char* fname)
 	return 0;
 }
 
-
+/*
+ * switch_to_curses_mode - Перевод экрана терминала в режим curses
+ */
 static void switch_to_curses_mode()
 {
 	initscr();
@@ -480,7 +553,11 @@ static void switch_to_curses_mode()
 	refresh();
 }
 
-
+/*
+ * copy_file - Копирование файла
+ * @fname: имя файла, который надо скопировать
+ * @dest: путь назначения
+ */
 static void copy_file(const char* fname, const char* dest)
 {
 	int src_fd, dst_fd;
@@ -490,7 +567,7 @@ static void copy_file(const char* fname, const char* dest)
 		return;
 	}
 
-	dst_fd = open(dest, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+	dst_fd = open(dest, O_WRONLY | O_TRUNC | O_CREAT | O_SYNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 	if (dst_fd <= 0) {
 		close(src_fd);
 		print_status("Error opening destination file");
@@ -498,31 +575,34 @@ static void copy_file(const char* fname, const char* dest)
 	}
 
 	// Определение размера файла
-	long fsize = (long) lseek(src_fd, 0, SEEK_END);
+	ssize_t fsize = (ssize_t) lseek(src_fd, 0, SEEK_END);
 	if (fsize < 0) {
 		close(src_fd);
 		print_status("Error gathering file size");
 		return;
 	}
+	lseek(src_fd, 0, SEEK_SET);
 
-	progress = 0;
 	char buf[COPY_BLOCK_SIZE];
 	ssize_t sz, readed = 0;
+
 	if (fsize) while ((sz = read(src_fd, buf, COPY_BLOCK_SIZE))) {
-		progress = (readed += sz) / fsize;
-		write(dst_fd, buf, sz);
-		/*
-		mvwprintw(statusbar, 0, 0, "progress: %f", progress);
-		wrefresh(statusbar);
-		getchar();
-		*/
+		if (sz > 0) {
+			progress = ((float) (readed += sz)) / fsize;
+			write(dst_fd, buf, sz);
+		}
+		else if (errno == EINTR)
+			continue;
 	}
+	progress = 0;
 
 	close(src_fd);
 	close(dst_fd);
 }
 
-
+/*
+ * get_other_panel - Получить указатель на другую панель
+ */
 static file_panel* get_other_panel()
 {
 	if (cp->side == P_LEFT)
@@ -531,7 +611,9 @@ static file_panel* get_other_panel()
 		return &lpanel;
 }
 
-
+/*
+ * panel_copy - Подготовка к копированию файла или директории
+ */
 static void* panel_copy(void* par)
 {
 	file_info* fi = selected_file();
@@ -548,17 +630,24 @@ static void* panel_copy(void* par)
 	scan_dir(cp->path);
 	draw_panel();
 	cp = get_other_panel();
+	chdir(cp->path);
 
 	return par;
 }
 
-
+/*
+ * copy_dir - Копирование директории
+ * @dirname: каталог, подлежащий копированию
+ * @dest: путь назначения
+ */
 static void copy_dir(const char* dirname, const char* dest)
 {
 	print_status("Directory copying not supported yet");
 }
 
-
+/*
+ * start_copy - создание потоков для копирования
+ */
 void start_copy()
 {
 	if (! cp->select)
@@ -567,22 +656,42 @@ void start_copy()
 	pthread_create(&copy_thread, NULL, panel_copy, NULL);
 	pthread_create(&progress_thread, NULL, show_progress, NULL);
 	pthread_join(copy_thread, NULL);
-	pthread_cancel(progress_thread);
+	pthread_join(progress_thread, NULL);
 }
 
-
+/*
+ * show_progress - отображение прогресса копирования
+ */
 static void* show_progress(void* par)
 {
 	print_status("Copy progress: ");
-	ssize_t pw = getmaxx(statusbar) - getcurx(statusbar) - 1;
-	ssize_t i = 0, old = 0;
+	wattron(statusbar, A_REVERSE);
+	size_t pw = getmaxx(statusbar) - getcurx(statusbar) - 1;
+	size_t i = 0, old = 0;
 	while (i < pw) {
 		i = progress * pw;
 		if (i != old) {
-			whline(statusbar, '!', i - old);
+			whline(statusbar, ' ', i);
 			wrefresh(statusbar);
 			old = i;
 		}
 	}
+	wattroff(statusbar, A_REVERSE);
 	return par;
+}
+
+/*
+ * check_path - Проверка имени пути на корректное окончание
+ * @path: строка для проверки
+ */
+static void check_path(char* path)
+{
+	char* c = &path[strlen(path) - 1];
+	while (c != path && (*c == ' ' || *c == '\t'))
+		--c;
+	
+	// Если в конце пути нет косой черты, добавляем её
+	if (*c != '/')
+		*++c = '/';
+	*++c = 0;
 }

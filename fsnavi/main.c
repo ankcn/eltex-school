@@ -6,7 +6,10 @@
 
 int main(int argc, char** argv)
 {
-	prepare();
+	if (argc > 1)
+		prepare(argv[1]);
+	else
+		prepare(NULL);
 
 	int k = 0;	// Код клавиши, получаемой от терминала
 	do switch (k) {

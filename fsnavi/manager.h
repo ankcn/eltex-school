@@ -28,8 +28,8 @@
 // Объём данных в начале файла для анализа
 #define TEXT_SIZE_FOR_ANALYSE	2222
 
-//
-#define COPY_BLOCK_SIZE	0x10000
+// Размер блока данных для копирования
+#define COPY_BLOCK_SIZE	0x100000
 
 
 // Варианты панелей: левая и правая
@@ -61,11 +61,8 @@ typedef struct {
 // Высвобождение ресурсов
 void clean_up();
 
-// Отобразить список файлов в текущей панели
-void list_files();
-
 // Инициализация и определение параметров экрана ncurses
-void prepare();
+void prepare(const char* dir);
 
 // Получить код символа/клавиши
 int get_key();
@@ -83,10 +80,10 @@ void change_dir(const char* dirname);
 int max_lines();
 
 // Подняться вверх по списку файлов на заданное количество позиций
-void move_up(int num);
+void move_up(size_t num);
 
 // Спустится вниз по спику файлов на заданное количество позиций
-void move_down(int num);
+void move_down(size_t num);
 
 // Перейти наверх списка файлов
 void go_top();
@@ -104,6 +101,9 @@ void start_copy();
 
 
 #ifdef MONITOR_C
+
+// Отобразить список файлов в текущей панели
+static void list_files();
 
 // Просмотр содержимого директории
 static int scan_dir(const char* path);
@@ -133,7 +133,7 @@ static void free_names(file_panel* pnl);
 static void add_file(const char* fname);
 
 // Представление размера файла в коротком виде с множителем (кило, Мега и т.п.)
-static void  size_short(char* buf, ssize_t x);
+static void  size_short(char* buf, size_t x);
 
 // Функция сравнения имён файлов
 static int cmp_adapter(const void* a, const void* b);
@@ -151,6 +151,9 @@ static void print_status(const char* msg);
 static void* panel_copy(void*);
 
 static void* show_progress(void* par);
+
+static void check_path(char* path);
+
 
 #endif // MONITOR_C
 
