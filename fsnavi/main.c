@@ -46,7 +46,7 @@ int main(int argc, char** argv)
 			redraw();
 			break;
 		case KEY_F(5):
-			start_copy();
+			handle_copy_key();
 			break;
 	} while ((k = get_key()));
 

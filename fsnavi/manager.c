@@ -4,11 +4,9 @@
 #include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <errno.h>
 #include "manager.h"
@@ -59,7 +57,16 @@ static void add_file(const char* fname)
 	// Указатель на следующий (свободный элемент массива)
 	// куда будем помещать информацию о новом файле
 	file_info* fi = &(cp->files[cp->count++]);
+	get_fileinfo(fi, fname);
+}
 
+/*
+ * get_fileinfo - получение информации о файле
+ * @fi: указатель на структуру типа file_info, подлежащей заполнению
+ * @fname: строка с именем файла
+ */
+static void get_fileinfo(file_info* fi, const char* fname)
+{
 	// Выделяем память под имя файла
 	size_t len = strlen(fname) + 1;
 
@@ -88,7 +95,6 @@ static void add_file(const char* fname)
  */
 static int scan_dir(const char* path)
 {
-	struct dirent* fentry;
 	DIR* dir = opendir(path);
 
 	if (! dir)
@@ -108,6 +114,7 @@ static int scan_dir(const char* path)
 	chdir(cp->path);
 
 	// Обходим содержимое директории, добавляем найденные файлы в коллекцию
+	struct dirent* fentry;
 	while ((fentry = readdir(dir)))
 		add_file(fentry->d_name);
 	closedir(dir);
@@ -193,18 +200,18 @@ static int cmp_adapter(const void* a, const void* b)
 		return strcmp(fa->name, fb->name);
 }
 
-/* 
+/*
  * sort_panel - Сортировка файлов, обнаруженных в директории
  */
-static void sort_panel()
+inline static void sort_panel()
 {
 	qsort(cp->files, cp->count, sizeof(file_info), cmp_adapter);
 }
 
 /*
  * max_lines - получение максимального количества линий панели
- * 
- * Функция определяет максимальное количество файлов, 
+ *
+ * Функция определяет максимальное количество файлов,
  * которые можно отобразить одновременно на панели менеджера
  */
 int max_lines()
@@ -371,10 +378,22 @@ void change_dir(const char* dirname)
  * @buf: строка, в которую будет сохранён результат
  * @fname: имя файла
  */
-static void full_path(char* buf, const char* fname)
+inline static void full_path(char* buf, const char* fname)
 {
-	strcpy(buf, cp->path);
-	strcat(buf, fname);
+	name_with_path(buf, cp->path, fname);
+}
+
+/*
+ * name_with_path - Склеивание имени файла и его дирекории для получения полного пути
+ * @buf: строка, в которую будет сохранён результат
+ * @path: имя директории, в которой находится файл или каталог
+ * @name: имя файла или каталога
+ */
+static void name_with_path(char* buf, const char* path, const char* name)
+{
+	strcpy(buf, path);
+	check_path(buf);
+	strcat(buf, name);
 }
 
 /*
@@ -555,23 +574,27 @@ static void switch_to_curses_mode()
 
 /*
  * copy_file - Копирование файла
- * @fname: имя файла, который надо скопировать
- * @dest: путь назначения
+ * @val: указатель на параметры копирования
  */
-static void copy_file(const char* fname, const char* dest)
+static void* copy_file(void* val)
 {
+	// Интерпретируем входной параметр как указатель на структуру с параметрами для копирования
+	copy_params* prm = (copy_params*) val;
+
+	// Открываем на чтение файл - источник
 	int src_fd, dst_fd;
-	src_fd = open(fname, O_RDONLY);
+	src_fd = open(prm->source, O_RDONLY);
 	if (src_fd <= 0) {
 		print_status("Error opening source file");
-		return;
+		return NULL;
 	}
 
-	dst_fd = open(dest, O_WRONLY | O_TRUNC | O_CREAT | O_SYNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+	// Открываем на запись файл - копию
+	dst_fd = open(prm->destination, O_WRONLY | O_TRUNC | O_CREAT /*| O_SYNC*/, prm->attr.st_mode);
 	if (dst_fd <= 0) {
 		close(src_fd);
 		print_status("Error opening destination file");
-		return;
+		return NULL;
 	}
 
 	// Определение размера файла
@@ -579,25 +602,26 @@ static void copy_file(const char* fname, const char* dest)
 	if (fsize < 0) {
 		close(src_fd);
 		print_status("Error gathering file size");
-		return;
+		return NULL;
 	}
 	lseek(src_fd, 0, SEEK_SET);
 
+	// Поблочно читаем из источника и записываем в копию
 	char buf[COPY_BLOCK_SIZE];
 	ssize_t sz, readed = 0;
-
 	if (fsize) while ((sz = read(src_fd, buf, COPY_BLOCK_SIZE))) {
 		if (sz > 0) {
+			// Вычисление доли скопированных данных для отображения прогресса
 			progress = ((float) (readed += sz)) / fsize;
 			write(dst_fd, buf, sz);
 		}
 		else if (errno == EINTR)
 			continue;
 	}
-	progress = 0;
 
 	close(src_fd);
 	close(dst_fd);
+	return val;
 }
 
 /*
@@ -613,58 +637,85 @@ static file_panel* get_other_panel()
 
 /*
  * panel_copy - Подготовка к копированию файла или директории
+ * @prm: указатель на параметры копирования
+ *
+ * Если из параметров выясняем, что копировать надо директорию,
+ * то вызываем copy_dir, иначе создаём два потока - один для
+ * копирования файла, а второй - для отображения прогресса
  */
-static void* panel_copy(void* par)
+inline static void copy_item(const copy_params* prm)
 {
-	file_info* fi = selected_file();
-	char dstp[FILENAME_MAX];
-
-	cp = get_other_panel();
-	full_path(dstp, fi->name);
-
-	if (fi->is_dir)
-		copy_dir(fi->name, dstp);
-	else
-		copy_file(fi->name, dstp);
-
-	scan_dir(cp->path);
-	draw_panel();
-	cp = get_other_panel();
-	chdir(cp->path);
-
-	return par;
+	if (S_ISDIR(prm->attr.st_mode))
+		copy_dir(prm);
+	else {
+		pthread_t copy_thread, progress_thread;
+		pthread_create(&copy_thread, NULL, copy_file, (void *) prm);
+		pthread_create(&progress_thread, NULL, show_progress, (void *) prm->source);
+		pthread_detach(copy_thread);
+		pthread_join(progress_thread, NULL);
+	}
 }
 
 /*
  * copy_dir - Копирование директории
- * @dirname: каталог, подлежащий копированию
- * @dest: путь назначения
+ * @prm: указатель на параметры копирования
  */
-static void copy_dir(const char* dirname, const char* dest)
+static void copy_dir(const copy_params* prm)
 {
-	print_status("Directory copying not supported yet");
-}
-
-/*
- * start_copy - создание потоков для копирования
- */
-void start_copy()
-{
-	if (! cp->select)
+	// Открываем директорию для выяснения содержимого
+	DIR* dir = opendir(prm->source);
+	if (! dir)
 		return;
-	pthread_t copy_thread, progress_thread;
-	pthread_create(&copy_thread, NULL, panel_copy, NULL);
-	pthread_create(&progress_thread, NULL, show_progress, NULL);
-	pthread_join(copy_thread, NULL);
-	pthread_join(progress_thread, NULL);
+
+	// Создаём пустую копию директории
+	int res = mkdir(prm->destination, prm->attr.st_mode);
+	// Если вдруг такое имя уже занято...
+	if (res == EEXIST) {
+		file_info fi;
+		get_fileinfo(&fi, prm->destination);
+		// Проверям, файл это или каталог
+		if (! fi.is_dir) {
+			// Если файл, то выходим, иначе копируем в существующую директорию
+			print_status("There is a file with the same name");
+			return;
+		}
+	}
+	else if (res) {
+		print_status("Can't create directory");
+		return;
+	}
+
+	// Обходим содержимое директории
+	struct dirent* en;
+	while ((en = readdir(dir))) {
+		// Пропускаем текущий и родительсикй каталоги
+		if (! strcmp(en->d_name, ".") || ! strcmp(en->d_name, ".."))
+			continue;
+		// Формируем параметры для копирования обнаруженного элемента
+		copy_params next;
+		fill_copy_params(&next, prm->source, prm->destination, en->d_name);
+		// Рекурсивно вызываем новую процедуру копирования
+		copy_item(&next);
+	}
+
+	closedir(dir);
 }
 
 /*
  * show_progress - отображение прогресса копирования
+ *
+ * Здесь отслеживается значение глобальной переменной progress, которая
+ * соответствует доли скопированных данных от объёма файла.
+ * Пропорционально величине progress рисуется горизонтальная линия,
+ * обозначающая текущий прогресс копирования файла.
  */
 static void* show_progress(void* par)
 {
-	print_status("Copy progress: ");
+	char* name = (char*) par;
+	werase(statusbar);
+	mvwprintw(statusbar, 0, 1, "Copy %s: ", name);
+	wrefresh(statusbar);
+
 	wattron(statusbar, A_REVERSE);
 	size_t pw = getmaxx(statusbar) - getcurx(statusbar) - 1;
 	size_t i = 0, old = 0;
@@ -676,6 +727,7 @@ static void* show_progress(void* par)
 			old = i;
 		}
 	}
+	progress = 0;
 	wattroff(statusbar, A_REVERSE);
 	return par;
 }
@@ -689,9 +741,45 @@ static void check_path(char* path)
 	char* c = &path[strlen(path) - 1];
 	while (c != path && (*c == ' ' || *c == '\t'))
 		--c;
-	
+
 	// Если в конце пути нет косой черты, добавляем её
 	if (*c != '/')
 		*++c = '/';
 	*++c = 0;
+}
+
+/*
+ * handle_copy_key - Обработка нажатия клавиши копирования
+ */
+void handle_copy_key()
+{
+	if (! cp->select)
+		return;
+
+	// Подготавливаем параметры копирования
+	copy_params task;
+	fill_copy_params(&task, cp->path, get_other_panel()->path, selected_file()->name);
+	// и передаём их в функцию копирования
+	copy_item(&task);
+
+	// После завершения копирования обновляем панель, в которую копировали
+	cp = get_other_panel();
+	scan_dir(cp->path);
+	draw_panel();
+	cp = get_other_panel();
+	chdir(cp->path);
+}
+
+/*
+ * fill_copy_params - Заполнение структуры параметрами копирования
+ * @prm: указатель на структуру, которую надо заполнить
+ * @src_dir: строка с именем директории, в которой лежит файл - источник
+ * @dst_dir: строка с именем директории, в которой будет файл  - копия
+ * @name: строка с именем файла или каталога
+ */
+static void fill_copy_params(copy_params* prm, const char* src_dir, const char* dst_dir, const char* name)
+{
+	name_with_path(prm->source, src_dir, name);
+	name_with_path(prm->destination, dst_dir, name);
+	stat(prm->source, &prm->attr);
 }

@@ -1,7 +1,8 @@
 COMPILER = gcc -Wall
 
-fsnavi: manager.o main.o
-	$(COMPILER) -o fsnavi manager.o main.o -lncurses -pthread
+fsnavi: manager.o main.o bin
+	$(COMPILER) -o bin/fsnavi manager.o main.o -lncurses -pthread
+	rm *.o
 
 manager.o: manager.c manager.h
 	$(COMPILER) -o manager.o -c manager.c
@@ -9,5 +10,8 @@ manager.o: manager.c manager.h
 main.o: main.c manager.h
 	$(COMPILER) -o main.o -c main.c
 
+bin:	
+	mkdir bin
+
 clean:
-	rm *.o fsnavi
+	rm fsnavi

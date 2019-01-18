@@ -4,6 +4,7 @@
 #include <time.h>
 #include <ncurses.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 
 // Количество файлов, под которое выделяется дополнительная память
@@ -22,7 +23,7 @@
 #define WCTRL(k)	(k - 0100)
 
 // Как найти редактор файлов
-#define EDITOR_REL_PATH	"/../myedit/bin/myedit"
+#define EDITOR_REL_PATH	"/../../myedit/bin/myedit"
 #define EDITOR_FIRST_ARGUMENT	"myedit"
 
 // Объём данных в начале файла для анализа
@@ -56,6 +57,13 @@ typedef struct {
 	char path[PATH_MAX];	// Полный путь к текущей директории
 	ssize_t start;	// Номер файла, с которого начинать отображение
 } file_panel;
+
+// Структура с параметрами для задачи копирования
+typedef struct {
+	char source[FILENAME_MAX];	// Полный путь источника
+	char destination[FILENAME_MAX];	// Полный путь назначения
+	struct stat attr;	// Аттрибуты файла
+} copy_params;
 
 
 // Высвобождение ресурсов
@@ -97,7 +105,7 @@ void redraw();
 // Обработка нажатия клавиши Enter
 void enter();
 
-void start_copy();
+void handle_copy_key();
 
 
 #ifdef MONITOR_C
@@ -109,7 +117,7 @@ static void list_files();
 static int scan_dir(const char* path);
 
 // Получить полный путь к файлу из его имени и текущей директории
-static void full_path(char* buf, const char* fname);
+inline static void full_path(char* buf, const char* fname);
 
 // Получить родительский и текущий каталог от заданного полного пути
 static void parent_dir(char* par, char* cur, const char* path);
@@ -118,7 +126,7 @@ static void parent_dir(char* par, char* cur, const char* path);
 static bool is_root();
 
 // Сортировка файлов, обнаруженных в директории
-static void sort_panel();
+inline static void sort_panel();
 
 // Запуск внешнего редактора файлов
 static int start_editor(const char* fname);
@@ -142,17 +150,23 @@ static file_info* selected_file();
 
 static file_panel* get_other_panel();
 
-static void copy_file(const char* fname, const char* dest);
+static void* copy_file(void* val);
 
-static void copy_dir(const char* dirname, const char* dest);
+static void copy_dir(const copy_params* prm);
 
 static void print_status(const char* msg);
-
-static void* panel_copy(void*);
 
 static void* show_progress(void* par);
 
 static void check_path(char* path);
+
+static void get_fileinfo(file_info* fi, const char* fname);
+
+inline static void copy_item(const copy_params* prm);
+
+static void name_with_path(char* buf, const char* path, const char* name);
+
+static void fill_copy_params(copy_params* prm, const char* src_dir, const char* dst_dir, const char* name);
 
 
 #endif // MONITOR_C
