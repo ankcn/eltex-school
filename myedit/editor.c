@@ -75,7 +75,7 @@ void print_on_screen()
 	char tc = ed.doc[tp];
 	// Временно обнуляем этот байт, чтобы обозначить "конец строки" для printw
 	ed.doc[tp] = 0;
-	printw(ed.doc + pos_by_xy(0, ed.disp));
+	addstr(ed.doc + pos_by_xy(0, ed.disp));
 	// Восстанавливаем символ вместо нуля
 	ed.doc[tp] = tc;
 	// Помещаем курсор терминала в нужные координаты
@@ -197,8 +197,6 @@ int load_doc(const char* fname)
 	for (char* it = ed.doc; *it; ++it)
 		if (*it == '\t')
 			*it = ' ';
-		else if (*it == '%')
-			*it = '/';
 
 	return 0;
 }

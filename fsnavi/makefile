@@ -14,4 +14,4 @@ bin:
 	mkdir bin
 
 clean:
-	rm fsnavi
+	rm bin/fsnavi

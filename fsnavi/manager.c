@@ -703,15 +703,16 @@ static void copy_dir(const copy_params* prm)
 
 /*
  * show_progress - отображение прогресса копирования
+ * @str: name of copying file for display
  *
  * Здесь отслеживается значение глобальной переменной progress, которая
  * соответствует доли скопированных данных от объёма файла.
  * Пропорционально величине progress рисуется горизонтальная линия,
  * обозначающая текущий прогресс копирования файла.
  */
-static void* show_progress(void* par)
+static void* show_progress(void* str)
 {
-	char* name = (char*) par;
+	char* name = (char*) str;
 	werase(statusbar);
 	mvwprintw(statusbar, 0, 1, "Copy %s: ", name);
 	wrefresh(statusbar);
@@ -729,7 +730,7 @@ static void* show_progress(void* par)
 	}
 	progress = 0;
 	wattroff(statusbar, A_REVERSE);
-	return par;
+	return str;
 }
 
 /*

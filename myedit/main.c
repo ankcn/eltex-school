@@ -73,7 +73,7 @@ int main(int argc, char** argv)
 			ask_and_load();
 			break;
 		default:
-			if ((k > 31 && k < 127 && k != 37) || k == '\n')
+			if ((k > 31 && k < 127) || k == '\n')
 				add_letter(k);
 		}
 

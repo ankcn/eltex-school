@@ -117,7 +117,7 @@ static void list_files();
 static int scan_dir(const char* path);
 
 // Получить полный путь к файлу из его имени и текущей директории
-inline static void full_path(char* buf, const char* fname);
+static void full_path(char* buf, const char* fname);
 
 // Получить родительский и текущий каталог от заданного полного пути
 static void parent_dir(char* par, char* cur, const char* path);
@@ -126,7 +126,7 @@ static void parent_dir(char* par, char* cur, const char* path);
 static bool is_root();
 
 // Сортировка файлов, обнаруженных в директории
-inline static void sort_panel();
+static void sort_panel();
 
 // Запуск внешнего редактора файлов
 static int start_editor(const char* fname);
@@ -162,7 +162,7 @@ static void check_path(char* path);
 
 static void get_fileinfo(file_info* fi, const char* fname);
 
-inline static void copy_item(const copy_params* prm);
+static void copy_item(const copy_params* prm);
 
 static void name_with_path(char* buf, const char* path, const char* name);
 
