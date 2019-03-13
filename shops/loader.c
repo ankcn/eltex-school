@@ -6,7 +6,7 @@
 
 
 // Время сна погрузчика после загрузки магазина
-const unsigned int LOADER_SLEEP = 1;
+const unsigned LOADER_SLEEP = 1;
 
 // Минимальный объём товара, разгружаемый погрузчиком в магазине
 const int LOADER_SET_MIN = 300;

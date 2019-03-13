@@ -6,13 +6,13 @@
 
 
 // Минимальная потребность покупателя в товарах
-const int BUYER_DEMAND_MIN	= 3000;
+const int BUYER_DEMAND_MIN = 3000;
 
 // Максимальная потребность покупателя в товарах
-const int BUYER_DEMAND_MAX	= 3500;
+const int BUYER_DEMAND_MAX = 3500;
 
 // Время сна покупателя после посещения магазина
-const unsigned int BUYER_SLEEP = 3;
+const unsigned BUYER_SLEEP = 3;
 
 
 // Массив покупателей
