@@ -85,7 +85,7 @@ void operate()
 			// Если попался код ESC, то продолжаем считывание для получения ESC последовательности
 			if (c == KEY_ESC)
 				c = get_esc_seq();
-			
+
 			switch (c) {
 			// Если была нажата стрелка вверх, то загружаем предыдущую команду из истории
 			case ARROW_UP:
@@ -130,18 +130,23 @@ void operate()
 					putchar(c);
 				}
 			}
-			
+
 			// Если курсор - не в конце строки и нажатая клавиша - не стрелка
 			if (line.pos < line.size && c < ARROW_UP)
 				// тогда переотрисовываем на экране часть строки после курсора
 				reprint_last();
 		}
 
-		if (strlen(line.text)) {
-			printf("\nCommand: %s\n", line.text);
-			history_add(line.text);
-		} else
-			puts("");
+		// Убираем пробелы и табуляцию в начале команды
+		char* cmd = line.text;
+		while (isspace(*cmd))
+			++cmd;
+
+		puts("");
+		if (strlen(cmd)) {
+			history_add(cmd);
+			system(cmd);
+		}
 
 	// Завершаем работу, когда получена команда на выход
 	} while (strcmp(line.text, CMD_EXIT));

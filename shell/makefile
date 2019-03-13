@@ -1,7 +1,7 @@
 COMPILER = gcc -Wall
 
 shell: main.o stroka.o history.o interface.o bin
-	$(COMPILER) -o bin/shell main.o stroka.o history.o interface.o -pthread
+	$(COMPILER) -o bin/shell main.o stroka.o history.o interface.o
 	rm *.o
 
 main.o: main.c interface.h
