@@ -52,5 +52,7 @@ void move_cursor(const int arrow);
 
 void reprint_last();
 
+void echo_normal();
+
 
 #endif // INTERFACE_H_INCLUDED

@@ -7,6 +7,7 @@
 #include "interface.h"
 #include "stroka.h"
 #include "history.h"
+#include "shell.h"
 
 
 // Строка с командой для выхода из программы
@@ -145,7 +146,8 @@ void operate()
 		puts("");
 		if (strlen(cmd)) {
 			history_add(cmd);
-			system(cmd);
+			//system(cmd);
+			parse_command(cmd);
 		}
 
 	// Завершаем работу, когда получена команда на выход
