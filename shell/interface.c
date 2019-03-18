@@ -10,9 +10,6 @@
 #include "shell.h"
 
 
-// Строка с командой для выхода из программы
-const char CMD_EXIT[] = "exit";
-
 // Строка с приглашением командной строки
 const char PROMPT[] = "shell> ";
 
@@ -22,14 +19,13 @@ struct termios attr_backup;
 // Переменная для редактирования вводимой команды
 stroka line;
 
+
 /**
  * echo_normal - Восстановление исходных настроек терминала
- * Здесь же вызов функции очистки истории
  */
 void echo_normal()
 {
 	tcsetattr(STDIN_FILENO, TCSANOW, &attr_backup);
-	history_free();
 }
 
 /**
@@ -74,6 +70,8 @@ void replace_line(const char* str)
  */
 void operate()
 {
+	int res;
+
 	// Обрабатываем команды в цикле до получения команды выхода
 	do {
 		// Выводим приглашение командной строки
@@ -143,15 +141,19 @@ void operate()
 		while (isspace(*cmd))
 			++cmd;
 
+		// Если строка не пустая, то добавляем её в историю и вызываем парсинг команды
 		puts("");
 		if (strlen(cmd)) {
 			history_add(cmd);
-			//system(cmd);
-			parse_command(cmd);
+			res = parse_command(cmd);
+			if (res == RET_ERROR)
+				puts("Error");
 		}
 
 	// Завершаем работу, когда получена команда на выход
-	} while (strcmp(line.text, CMD_EXIT));
+	} while (res != RET_EXIT);
+
+	history_free();
 }
 
 /**

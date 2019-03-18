@@ -2,10 +2,14 @@
 #define SHELL_H_INCLUDED
 
 
+// Предельное количество аргументов команды
 #define MAX_ARGS	99
 
+// Коды результата парсинга команды
+enum { RET_NORMAL = 0, RET_EXIT, RET_ERROR };
 
-void parse_command(char* cmd);
+
+int parse_command(char* cmd);
 
 
 #endif // SHELL_H_INCLUDED
