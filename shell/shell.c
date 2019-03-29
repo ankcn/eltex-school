@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -32,8 +34,7 @@ int parse_command(char* cmd)
 
 	// Строка разбивается на слова, которые раскладываются по массиву параметров varg
 	while (part != NULL) {
-		varg[i] = malloc(strlen(part) + 1);
-		strcpy(varg[i], part);
+		varg[i] = strdupa(part);
 		part = strtok(NULL, " \t");
 		++i;
 	}
@@ -45,8 +46,7 @@ int parse_command(char* cmd)
 	varg[i] = NULL;
 
 	// Путь к исполняемому файлу - первое слово команды
-	char* path = malloc(strlen(varg[0]) + 1);
-	strcpy(path, varg[0]);
+	char* path = strdupa(varg[0]);
 
 	// Команду cd выполняем на месте
 	if (! strcmp(path, CMD_CD)) {
@@ -80,11 +80,6 @@ int parse_command(char* cmd)
 		} else if (execvp(path, varg) == -1)
 			exit(EXIT_FAILURE);
 	}
-
-	// Освобождаем память 
-	free(path);
-	while (--i)
-		free(varg[i]);
 
 	return ret;
 }

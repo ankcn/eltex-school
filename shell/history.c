@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "history.h"
 
 
@@ -28,6 +29,10 @@ void history_add(const char* line)
 	char** lp = &history.lines[history.vacancy];
 	// Перевыделяем память под новое содержимое
 	*lp = realloc(*lp, strlen(line));
+	if (! lp) {
+		perror("history_add");
+		exit(EXIT_FAILURE);
+	}
 	// Копируем содержимое полученной строки в вакантную позицию истории
 	strcpy(*lp, line);
 
