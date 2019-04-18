@@ -1,6 +1,7 @@
 #include "common.h"
 
 
+
 struct {
 	ssize_t count;
 	char* names[MAX_CLIENTS];
@@ -22,6 +23,9 @@ void broadcast(const char* text)
 
 void reg_client(const int id, const char* name)
 {
+	if (clients.count == MAX_CLIENTS)
+		return;
+
 	clients.qids[clients.count] = id;
 	char* cn = malloc(strlen(name) + 1);
 	strcpy(cn, name);
@@ -53,7 +57,7 @@ void start_server()
 
 	do {
 		message_reg_t rm;
-		if (msgrcv(qid, &rm, MSG_LEN, 0, MSG_NOERROR | IPC_NOWAIT) > 0)
+		if (msgrcv(qid, &rm, MSG_REG_LEN, 0, MSG_NOERROR | IPC_NOWAIT) > 0)
 			reg_client(rm.qid, rm.name);
 
 		for (int i = 0; i < clients.count; ++i) {
@@ -61,7 +65,9 @@ void start_server()
 			if (msgrcv(clients.qids[i], &mes, MSG_LEN, 0, MSG_NOERROR | IPC_NOWAIT) > 0)
 				broadcast(mes.content);
 		}
-	} while (getc(stdin) != 'q');
+
+//		puts("test");
+	} while (getchar() != 'q');
 
 	msgctl(qid, IPC_RMID, NULL);
 }

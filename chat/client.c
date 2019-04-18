@@ -1,4 +1,6 @@
 #include "common.h"
+#include "noecho.h"
+
 
 //
 int qid;
@@ -28,16 +30,15 @@ void reg_on_server(const char* name)
     msg.type = 1;
     strcpy(msg.name, name);
 
-	if (msgsnd(sqid, &msg, sizeof(message_reg_t) - sizeof(long), 0) < 0) {
+	if (msgsnd(sqid, &msg, MSG_REG_LEN, 0) < 0) {
 		perror("client: reg_on_server, send our queue id");
 		exit(EXIT_FAILURE);
 	}
 }
 
-
+/*
 void send_message(const char* text)
 {
-
     message_t msg;
     strcpy(msg.content, text);
     unsigned len = strlen(text);
@@ -45,22 +46,27 @@ void send_message(const char* text)
     msg.type = 1;
     msgsnd(qid, &msg, len, 0);
 }
-
+*/
 
 void chating()
 {
 	puts("Press Enter to write a message or q for exit");
 
 	int c;
+	message_t msg;
+	msg.type = 1;
+
 	do {
-		c = getc(stdin);
-		message_t msg;
-		msg.type = 1;
+		c = getchar();
 
 		// write message
-		if (c == 'n') {
+		if (c == '\n') {
+			echo_normal();
+			show_cursor();
 			scanf("%s", msg.content);
 			msgsnd(qid, &msg, strlen(msg.content) + 1, 0);
+			echo_custom();
+			hide_cursor();
 		}
 
 		// check new messages

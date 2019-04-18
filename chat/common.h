@@ -19,13 +19,16 @@
 #define MSG_KEY	12345
 
 //
-#define QUEUE_RIGHTS	0666
+#define QUEUE_RIGHTS	0660
 
 //
 #define MAX_CLIENTS	22
 
 //
 #define MAX_NAME_LEN	15
+
+//
+#define MSG_REG_LEN	(sizeof(message_reg_t) - sizeof(long))
 
 
 //
