@@ -4,31 +4,34 @@
 #include "noecho.h"
 
 
+// Объявления внешних функций
 void start_server();
-//void send_message(const char* text);
 void reg_on_server();
 void chating();
 
 
 int main(int argc, char** argv)
 {
-    echo_custom();
-    hide_cursor();
+	// Переключение режима терминала в специальный режим с отключенным эхо и невидимым курсором
+	echo_custom();
+	hide_cursor();
 
-    if (argc > 1) {
+	// Проверяем аргумент командной строки
+	if (argc == 2) {
+		// Если получено "server", то запускаем сервер
 		if (! strcmp(argv[1], "server")) {
-			puts("Starting server");
+			puts("Starting server\nPress q for quit\n");
 			start_server();
+		// В противном случае принимаем аргумент как псевдоним и запускаем клиента
 		} else {
-			//puts("Sending message");
-			//send_message(argv[1]);
 			reg_on_server(argv[1]);
 			chating();
 		}
 	} else
 		puts("Usage: \"chat server\" for server mode or \"chat _name_\" for client");
 
-    echo_normal();
-    show_cursor();
-    return 0;
+	// Восстановление нормального режима терминала
+	echo_normal();
+	show_cursor();
+	return 0;
 }
