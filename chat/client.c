@@ -1,64 +1,78 @@
+#define _GNU_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
+#include <semaphore.h>
+
 #include "common.h"
 #include "noecho.h"
+#include "timestamp.h"
 
 
-// Номер очереди сообщений данного клиента
-int qid;
-
+// Псевдоним участника чата
+char nickname[MAX_NAME_LEN] = "anonymous";
 
 /*
- * reg_on_server - Регистрация на сервере
- * @name: имя (псевдоним) пользователя
- * В очередь сообщений сервера отправляется сообщение с именем
- * пользователя и номером очереди сообщений данного клиента
+ * send_message - Отправка сообщения в чат
+ * @buf: указатель на структуру с очередью сообщений
+ * @str: строка сообщения для отправки
+ * @sm: указатель на семафор для безопасного доступа к buf
  */
-void reg_on_server(const char* name)
+void send_message(message_buffer_t* buf, const char* str, sem_t* sm)
 {
-	// Проверка корректности длинны имени
-	if (strlen(name) < 3 || strlen(name) > MAX_NAME_LEN) {
-		printf("Nickname length must be [3..%d] characters", MAX_NAME_LEN);
-		exit(EXIT_FAILURE);
-	}
-	puts("Trying to register on server...");
+	// Ждём освобождения свободного состояния семафора и тут же занимаем его сами
+	sem_wait(sm);
 
-	// Определение номера очереди сообщений сервера по фиксированному ключу
-	int sqid = msgget(MSG_KEY, 0);
-	if (sqid == -1) {
-		perror("client: reg_on_server, get server queue id");
-		exit(EXIT_FAILURE);
-	}
+	// Циклический инкремент счётчика сообщений в очереди
+	if (++buf->last == MSG_BUF_LEN)
+		buf->last = 0;
 
-	// Создание собственной очереди сообщений (клиента)
-	if ((qid = msgget(IPC_PRIVATE, QUEUE_RIGHTS)) < 0) {
-		perror("client: reg_on_server, get private queue id");
-		exit(EXIT_FAILURE);
-	}
+	// Копирование текста сообщения и имени автора в разделяемую память
+	message_t* msg = &buf->history[buf->last];
+	strcpy(msg->content, str);
+	strcpy(msg->name, nickname);
 
-	// Отправка регистрационного сообщения серверу
-	message_reg_t msg;
-	msg.qid = qid;
-	msg.type = MSG_TYPE_CLIENT;
-	strcpy(msg.name, name);
-
-	if (msgsnd(sqid, &msg, MSG_REG_LEN, 0) < 0) {
-		perror("client: reg_on_server, send our queue id");
-		exit(EXIT_FAILURE);
-	}
+	// Освобождаем семафор
+	sem_post(sm);
 }
+
 
 /*
  * chating - Процесс обмена сообщениями
- * В цикле, пока не нажата клавиша q, выполняются две вещи: 
+ * @name: псевдоним участника чата
+ * В цикле, пока не нажата клавиша q, выполняются две вещи:
  * 1. Проверяется наличие сообщений в очереди. Полученное сообщение отображается.
- * 2. Если нажат Enter, начинается ввод текста до следующего нажатия Enter, 
- * после чего сообщение отправляется на сервер
+ * 2. Если нажат Enter, начинается ввод текста до следующего нажатия Enter,
+ * после чего сообщение отправляется другим участникам
  */
-void chating()
+void chating(const char* name)
 {
-	puts("Press Enter to write a message or q for exit\n");
+	strcpy(nickname, name);
+
+	// Получаем дескриптор объекта в разделяемой памяти
+	int memd = shm_open(SHARED_MEM_NAME, O_CREAT | O_RDWR, SH_MEM_RIGHTS);
+	if (memd < 0)
+		perror("shm_open"), exit(EXIT_FAILURE);
+
+	// Задаём размер памяти под наш объект
+	ftruncate(memd, MSG_BUF_SZ);
+	message_buffer_t* mes_buf = mmap(0, MSG_BUF_SZ, PROT_READ | PROT_WRITE, MAP_SHARED, memd, 0);
 
 	int c;	// Код нажатой клавиши
-	message_t msg;	// Сообщение
+	int last = mes_buf->last;	// Номер последнего полученного сообщения
+
+	// Открываем/создаём семафор
+	sem_t* busy = sem_open(SEM_NAME, O_CREAT, SH_MEM_RIGHTS, 1);
+	if (busy == SEM_FAILED)
+		perror("sem_open"), exit(EXIT_FAILURE);
+
+	puts("Press Enter to write a message or q for exit\n");
+	send_message(mes_buf, "I'm here", busy);
 
 	do {
 		c = getchar();
@@ -68,30 +82,45 @@ void chating()
 			// Переход в нормальный режим терминала
 			echo_normal();
 			show_cursor();
-			char* line = msg.content;
+			char line[MSG_LEN];
+			size_t pos = 0;
+
 			// Считываем ввод
-			while ((*line++ = getchar()) != '\n');
+			while ((line[pos++] = getchar()) != '\n');
+
 			// Удаляем текущую строку с экрана
 			printf("\e[F\e[2K");
+
 			// Терминируем полученную строку перед отправкой
-			*--line = '\0';
-			msg.type = MSG_TYPE_CLIENT;
-			// Отправляем сообщение на сервер
-			msgsnd(qid, &msg, strlen(msg.content) + 1, 0);
+			line[--pos] = '\0';
+
+			// Отправляем введённый текст в чат
+			send_message(mes_buf, line, busy);
+
 			// Возвращаем "глухой" режим терминала
 			echo_custom();
 			hide_cursor();
 		}
 
 		// Проверка новых сообщений
-		if (msgrcv(qid, &msg, MSG_LEN, MSG_TYPE_SERVER, MSG_NOERROR | IPC_NOWAIT) > 0) {
-			printf("%s; %s\n\n", get_date_str(), msg.content);
+		// Если номер последнего полученного сообщения отличается от номера самого
+		// свежего сообщения в очереди, то печатаем все новые сообщения
+		while (last != mes_buf->last) {
+			if (++last == MSG_BUF_LEN)
+				last = 0;
+			message_t* mes = &mes_buf->history[last];
+			printf("%s; %s\n%s\n\n", get_date_str(), mes->name, mes->content);
 		}
 
 	// Выход по нажатию q
 	} while (c != 'q');
 
-	// Удаление очереди сообщений
-	msgctl(qid, IPC_RMID, NULL);
+	send_message(mes_buf, "I'm quit", busy);
+
+	// Удаление семафора и объекта в разделяемой памяти
+	munmap(mes_buf, MSG_BUF_SZ);
+	close(memd);
+	shm_unlink(SHARED_MEM_NAME);
+	sem_unlink(SEM_NAME);
 }
 
