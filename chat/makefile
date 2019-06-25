@@ -17,4 +17,4 @@ bin:
 	mkdir bin
 
 clean:
-	rm -f bin/shell
+	rm -f bin/chat
