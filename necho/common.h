@@ -1,6 +1,8 @@
 #ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
 
+#define _GNU_SOURCE
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>

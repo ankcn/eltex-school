@@ -1,4 +1,36 @@
 #include "common.h"
+#include <netdb.h>
+
+
+/*
+ * resolve_name - Получение IP адреса из доменного имени
+ * @name: строка с доменным именем
+ * @address: структура адреса, в которую помещается результат
+ * @answer: список структур addrinfo на выходе getaddrinfo
+ * @hints: подсказки для getaddrinfo
+ */
+int resolve_name(const char* name, struct sockaddr_in* address)
+{
+	struct addrinfo* answer;
+	struct addrinfo hints;
+
+	hints.ai_family = AF_INET;
+	hints.ai_next = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_canonname = NULL;
+	hints.ai_socktype = 0;
+	hints.ai_flags = 0;
+
+	// Получаем список адресов для заданного имени
+	if (getaddrinfo(name, NULL, &hints, &answer))
+		return 1;
+
+	// Копируем первый адрес из списка
+	*((struct sockaddr*) address) = *answer[0].ai_addr;
+
+	freeaddrinfo(answer);
+	return 0;
+}
 
 /*
  * echo_client - Клиент сетевого эхо
@@ -10,7 +42,6 @@
  * @buf: буфер для получения данных от сервера
  * Отправка запроса на эхо-сервер и получение ответа
  */
-
 void echo_client(int proto, const char* host, const char* msg)
 {
 	// Создание сокета
@@ -18,15 +49,11 @@ void echo_client(int proto, const char* host, const char* msg)
 	if (sock_fd < 0)
 		print_and_quit("Socket creation failure");
 
-	// Подготовка структуры адреса сервера
+	// Преобразование IP адреса сервера из строки с именем
 	struct sockaddr_in address;
-	memset(&address, 0, sizeof(address));
-	address.sin_family = AF_INET;
+	if (resolve_name(host, &address))
+		print_and_quit("Address resolution failed");
 	address.sin_port = htons(SOCKET_PORT);
-
-	// Преобразование адреса сервера из текстовой строки в сетевой формат
-	if (inet_pton(AF_INET, host, &address.sin_addr) <= 0)
-		print_and_quit("Server IP address conversion failed");
 
 	// Подключение к серверу
 	if (connect(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0)
