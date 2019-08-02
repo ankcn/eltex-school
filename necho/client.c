@@ -62,6 +62,8 @@ void echo_client(int proto, const char* host, const char* msg)
 	// Отправка сообщения на сервер
 	write(sock_fd, msg, strlen(msg) + 1);
 
+	puts("Waiting for answer");
+
 	// Получение ответа сервера
 	char buf[BUF_SIZE];
 	if (read(sock_fd, buf, BUF_SIZE) > 0)

@@ -19,12 +19,12 @@
  */
 void echo_server(int proto)
 {
-        // Создание сокета
+	// Создание сокета
 	int sock_fd = socket(AF_INET, proto, 0);
 	if (sock_fd < 0)
 		print_and_quit("Socket creation failure");
 
-        // Подготовка структуры адреса сервера
+	// Подготовка структуры адреса сервера
 	struct sockaddr_in address;
 	memset(&address, 0, sizeof(address));
 	address.sin_family = AF_INET;
@@ -56,24 +56,38 @@ void echo_server(int proto)
 		} else
 			n = recvfrom(sock_fd, buf + caplen, BUF_SIZE - caplen, 0, (struct sockaddr*) &claddr, &alen);
 
-		// Выясняем IP адрес подключенного клиента
-		char addr_str[INET_ADDRSTRLEN];
-		if (inet_ntop(AF_INET, &claddr.sin_addr, addr_str, INET_ADDRSTRLEN) != NULL)
-			printf("Connection from %s\n", addr_str);
+		// Создаём новый процесс для обоработки подключения
+		pid_t pid = fork();
+		if (pid < 0)
+			print_and_quit("Error while forking");
 
-		// В ответ отправляем клиенту то же самое, что получили от него, предваряя заголовком CAPTION
-		if (n > 0) {
-			puts(buf);
-			if (proto == SOCK_STREAM)
-				write(conn_fd, buf, n + caplen);
-			else
-				sendto(sock_fd, buf, n + caplen, 0, (struct sockaddr*) &claddr, alen);
-		} else
-			puts("No data received");
+		// Проверяем, если это дочерний процесс, то выполняем обработку запроса клиента
+		else if (! pid) {
 
-		// Закрываем открытый сокет
-		if (conn_fd)
-			close(conn_fd);
+			// Выясняем IP адрес подключенного клиента
+			char addr_str[INET_ADDRSTRLEN];
+			if (inet_ntop(AF_INET, &claddr.sin_addr, addr_str, INET_ADDRSTRLEN) != NULL)
+				printf("Connection from %s\n", addr_str);
+
+			// В ответ отправляем клиенту то же самое, что получили от него, предваряя заголовком CAPTION
+			if (n > 0) {
+				puts(buf);
+				if (proto == SOCK_STREAM)
+					write(conn_fd, buf, n + caplen);
+				else
+					sendto(sock_fd, buf, n + caplen, 0, (struct sockaddr*) &claddr, alen);
+			} else
+				puts("No data received");
+
+			// Закрываем открытый сокет
+			if (conn_fd)
+				close(conn_fd);
+
+			// Завершаем дочерний процесс
+			exit(0);
+		}
+
+
 	}
 }
 
