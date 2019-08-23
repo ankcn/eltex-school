@@ -51,8 +51,10 @@ void echo_client(int proto, const char* host, const char* msg)
 
 	// Преобразование IP адреса сервера из строки с именем
 	struct sockaddr_in address;
-	if (resolve_name(host, &address))
-		print_and_quit("Address resolution failed");
+	if (resolve_name(host, &address)) {
+		printf("Host %s: ", host);
+		print_and_quit("address resolution failed");
+	}
 	address.sin_port = htons(SOCKET_PORT);
 
 	// Подключение к серверу
@@ -61,8 +63,6 @@ void echo_client(int proto, const char* host, const char* msg)
 
 	// Отправка сообщения на сервер
 	write(sock_fd, msg, strlen(msg) + 1);
-
-	puts("Waiting for answer");
 
 	// Получение ответа сервера
 	char buf[BUF_SIZE];

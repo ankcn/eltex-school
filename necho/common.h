@@ -17,9 +17,6 @@
 // Порт сокета на сервере
 #define SOCKET_PORT	55123
 
-// Допустимое количество подключений к сокету
-#define MAX_CONNECTIONS	11
-
 // Размер буфера данных
 #define BUF_SIZE	0xFFFF
 

@@ -1,7 +1,7 @@
 COMPILER = gcc -Wall
 
 shell: main.o server.o error.o client.o bin
-	$(COMPILER) -o bin/necho main.o server.o error.o client.o
+	$(COMPILER) -o bin/necho main.o server.o error.o client.o -lpthread -lrt
 	rm *.o
 
 main.o: main.c error.h
