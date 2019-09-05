@@ -72,8 +72,6 @@ void echo_server(int mode)
 			if (ci->conn_fd < 0) {
 				if (no_cancel)
 					puts("Error while accepting connection");
-				else
-					puts("\nInterrupted");
 				continue;
 			}
 			ci->bytes = read(ci->conn_fd, ci->buf, BUF_SIZE);
@@ -145,10 +143,9 @@ int id = *((int*) par);
 			printf("Connection from %s handled by worker #%d\nGOT: %s\n", addr_str, id, ci->buf);
 
 		// В ответ отправляем клиенту то же самое, что получили от него, предваряя заголовком
-		char cap[CAP_MAX_LEN];
-		sprintf(cap, "Answer from worker #%d, queue slot #%d: ", id, que.next_pop);
-		send_to_client(ci, cap);
-		send_to_client(ci, ci->buf);
+		char mes[BUF_SIZE];
+		sprintf(mes, "Answer from worker #%d, queue slot #%d: %s", id, que.next_pop, ci->buf);
+		send_to_client(ci, mes);
 
 		// Закрываем открытый сокет
 		if (ci->conn_fd)
@@ -181,13 +178,22 @@ void send_to_client(const conn_info_t* ci, const char* data)
  * sig_int_hnd - Обработчик сигнала прерывания
  * Цель в том, чтобы привести к корректному завршению программы
  */
-void sig_int_hnd(int x) {
+void sig_int_hnd(int x)
+{
+	puts("\nInterrupted");
+
 	// Обнуляем флаг, тем самым, прекращая работу основных циклов
 	no_cancel = 0;
 
 	// С помощью семафора разблокируем потоки, которые вскоре завершаются
 	for (int i = 0; i < THREADS_NUM; ++i)
 		sem_post(&que.sem);
+
+	if (sock_fd) {
+		shutdown(sock_fd, SHUT_RDWR);
+		close(sock_fd);
+		sock_fd = 0;
+	}
 }
 
 /*
