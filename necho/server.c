@@ -1,4 +1,6 @@
 #include <pthread.h>
+#include <signal.h>
+#include <semaphore.h>
 #include "common.h"
 #include "server.h"
 
@@ -6,10 +8,16 @@
 // Переменные выведены в глабальную область для возможности доступа из других потоков
 
 // Файловый дескриптор сокета
-int sock_fd;
+static int sock_fd;
 
 // Протокол: TCP или UDP
-int proto;
+static int proto;
+
+// Флаг для прерывания работы программы по сигналу
+static volatile int no_cancel = 1;
+
+// Очередь запросов
+static req_queue_t que;
 
 
 /*
@@ -22,6 +30,9 @@ void echo_server(int mode)
 {
 	proto = mode;
 
+	// Регистрируем обработчика сигнала прерывания
+	signal(SIGINT, sig_int_hnd);
+
 	// Создание сокета
 	sock_fd = socket(AF_INET, proto, 0);
 	if (sock_fd < 0)
@@ -29,10 +40,7 @@ void echo_server(int mode)
 
 	// Подготовка структуры адреса сервера
 	struct sockaddr_in address;
-	memset(&address, 0, sizeof(address));
-	address.sin_family = AF_INET;
-	address.sin_port = htons(SOCKET_PORT);
-	address.sin_addr.s_addr = htonl(INADDR_ANY);
+	init_address(&address);
 
 	// Привязка сокета к IP адресу
 	if (bind(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0)
@@ -43,73 +51,102 @@ void echo_server(int mode)
 		print_and_quit("Can not listen socket");
 
 	// Инициализация массива обработчиков клиентских запросов
-	conn_info_t workers[THREADS_NUM];
-	for (int i = 0; i < THREADS_NUM; ++i) {
-		pthread_mutex_init(&workers[i].mtx, NULL);
-		pthread_cond_init(&workers[i].cnd, NULL);
-		workers[i].id = i;
-		pthread_create(&workers[i].thread, NULL, request_handler, (void *) &workers[i]);
-		pthread_detach(workers[i].thread);
-	}
+	pthread_t workers[THREADS_NUM];
+	for (long i = 0; i < THREADS_NUM; ++i)
+		pthread_create(&workers[i], NULL, request_handler, (void *) i);
 
-	// Бесконечный цикл; на каждой итерации (для нового подключения) берём следующего обработчика
-	for (int k = 0; ; ++k) {
-		if (k >= THREADS_NUM)
-			k = 0;
+	// Инициализация очереди
+	init_queue();
 
-		// Перебираем обработчиков, пока не найдём свободного
-		while (pthread_mutex_trylock(&workers[k].mtx))
-			if (++k >= THREADS_NUM)
-				k = 0;
-
+	// Работаем, пока обработчик сигнала не обнулил флаг no_cancel
+	while (no_cancel) {
 		socklen_t alen = sizeof(struct sockaddr_in);
+
+		// Продвигаемся по очереди в поисках свободного слота
+		while (que.jobs[inc_index(&que.next_add)].state != ST_FREE && no_cancel);
+		conn_info_t* ci = &que.jobs[que.next_add];
 
 		// Принимаем входящее подключение и считывем полученные данные
 		if (proto == SOCK_STREAM) {
-			workers[k].conn_fd = accept(sock_fd, (struct sockaddr*) &workers[k].claddr, &alen);
-			if (workers[k].conn_fd < 0)
-				print_and_quit("Error while accepting connection");
-			workers[k].bytes = read(workers[k].conn_fd, workers[k].buf, BUF_SIZE);
+			ci->conn_fd = accept(sock_fd, (struct sockaddr*) &ci->claddr, &alen);
+			if (ci->conn_fd < 0) {
+				if (no_cancel)
+					puts("Error while accepting connection");
+				else
+					puts("\nInterrupted");
+				continue;
+			}
+			ci->bytes = read(ci->conn_fd, ci->buf, BUF_SIZE);
 		} else
-			workers[k].bytes = recvfrom(sock_fd, workers[k].buf, BUF_SIZE, 0, (struct sockaddr*) &workers[k].claddr, &alen);
+			ci->bytes = recvfrom(sock_fd, ci->buf, BUF_SIZE, 0, (struct sockaddr*) &ci->claddr, &alen);
 
-		// Разблокируем мьютекс обработчика и сигналим ему, что можно приступать
-		pthread_mutex_unlock(&workers[k].mtx);
-		pthread_cond_signal(&workers[k].cnd);
+		// Сообщаем потокам-обработчикам, что для них есть работа
+		ci->state = ST_WAIT;
+		sem_post(&que.sem);
 	}
 
-	// TODO: move to... better place
-	// Закрытие потоков. Здесь никогда не выполняется.
-	for (int i = 0; i < THREADS_NUM; ++i) {
-		pthread_cancel(workers[i].thread);
-		pthread_cond_destroy(&workers[i].cnd);
-		pthread_mutex_destroy(&workers[i].mtx);
-	}
+	// Ждём завершения всех потоков
+	for (int i = 0; i < THREADS_NUM; ++i)
+		pthread_join(workers[i], NULL);
+
+	pthread_mutex_destroy(&que.mtx);
+	sem_destroy(&que.sem);
+	puts("Closing server");
 }
 
 
 /*
  * request_handler - Обработчик запроса клиента
- * @par: аргумент, под которым скрывается указатель на тип  conn_info_t
+ * @par: аргумент, через который передаётся порядковый номер обработчика
  */
 void* request_handler(void* par)
 {
-	conn_info_t* ci = (conn_info_t*) par;
-	printf("Starting worker #%d\n", ci->id);
+/*
+Вероятно, интерпретация указателя как целого и наоборот - не очень хорошая практика,
+но вариант с указателем на i (локальную переменную цикла for) не сработал (получался мусор):
+par = (void*) &i;
+int id = *((int*) par);
+*/
+	int id = (long) par;
+	printf("Starting worker #%d\n", id);
 
-	for (;;) {
+	while (no_cancel) {
 		// Ждём сигнала о получении запроса
-		while (! ci->bytes)
-			pthread_cond_wait(&ci->cnd, &ci->mtx);
+		sem_wait(&que.sem);
+
+		// Возможно, получен SIGINT, тогда бросаем это дело
+		if (! no_cancel)
+			break;
+
+		// Монополизируем доступ с помощью мьютекса
+		pthread_mutex_lock(&que.mtx);
+
+		// Ищем в очереди следующую задачу, ожидающую обработки
+		int k = 0;
+		while (que.jobs[inc_index(&que.next_pop)].state != ST_WAIT && k++ < QUEUE_SIZE);
+
+		// Ярлык для более удобного обращения к данным запроса
+		conn_info_t* ci = &que.jobs[que.next_pop];
+
+		// Если нашли, что искали, то помечаем задачу, как обрабатываемую
+		if (k < QUEUE_SIZE)
+			ci->state = ST_WORKING;
+
+		// Открываем доступ к очереди другим потокам
+		pthread_mutex_unlock(&que.mtx);
+
+		// Если во всей очереди не нашлось новой задачи, то ждём нового сигнала
+		if (k == QUEUE_SIZE || ! ci->bytes)
+			continue;
 
 		// Выясняем IP адрес подключенного клиента
 		char addr_str[INET_ADDRSTRLEN];
 		if (inet_ntop(AF_INET, &ci->claddr.sin_addr, addr_str, INET_ADDRSTRLEN) != NULL)
-			printf("Connection from %s handled by worker #%d\nGOT: %s\n", addr_str, ci->id, ci->buf);
+			printf("Connection from %s handled by worker #%d\nGOT: %s\n", addr_str, id, ci->buf);
 
 		// В ответ отправляем клиенту то же самое, что получили от него, предваряя заголовком
 		char cap[CAP_MAX_LEN];
-		sprintf(cap, "Answer from worker #%d: ", ci->id);
+		sprintf(cap, "Answer from worker #%d, queue slot #%d: ", id, que.next_pop);
 		send_to_client(ci, cap);
 		send_to_client(ci, ci->buf);
 
@@ -117,9 +154,12 @@ void* request_handler(void* par)
 		if (ci->conn_fd)
 			close(ci->conn_fd);
 
+		// Освобождаем слот в очереди
 		ci->bytes = 0;
+		ci->state = ST_FREE;
 	}
 
+	printf("Stoping worker #%d\n", id);
 	return par;
 }
 
@@ -135,5 +175,54 @@ void send_to_client(const conn_info_t* ci, const char* data)
 		write(ci->conn_fd, data, strlen(data));
 	else
 		sendto(sock_fd, data, strlen(data), 0, (struct sockaddr*) &ci->claddr, sizeof(ci->claddr));
+}
+
+/*
+ * sig_int_hnd - Обработчик сигнала прерывания
+ * Цель в том, чтобы привести к корректному завршению программы
+ */
+void sig_int_hnd(int x) {
+	// Обнуляем флаг, тем самым, прекращая работу основных циклов
+	no_cancel = 0;
+
+	// С помощью семафора разблокируем потоки, которые вскоре завершаются
+	for (int i = 0; i < THREADS_NUM; ++i)
+		sem_post(&que.sem);
+}
+
+/*
+ * init_address - Инициализация IP адреса сокета
+ * @addr: указатель на структуру sockaddr_in
+ */
+void init_address(struct sockaddr_in* addr)
+{
+	memset(addr, 0, sizeof(struct sockaddr_in));
+	addr->sin_family = AF_INET;
+	addr->sin_port = htons(SOCKET_PORT);
+	addr->sin_addr.s_addr = htonl(INADDR_ANY);
+}
+
+/*
+ * inc_index - Циклический инкремент индекса очереди
+ * @id: указатель на переменную индекса
+ */
+int inc_index(int* id)
+{
+	*id = (*id + 1) % QUEUE_SIZE;
+	return *id;
+}
+
+/*
+ * init_queue - Инициализация очереди запросов
+ */
+void init_queue()
+{
+	que.next_add = 0;
+	que.next_pop = QUEUE_SIZE - 1;
+	sem_init(&que.sem, 0, 0);
+	pthread_mutex_init(&que.mtx, NULL);
+
+	for (int i = 0; i < THREADS_NUM; ++i)
+		que.jobs[i].state = ST_FREE;
 }
 

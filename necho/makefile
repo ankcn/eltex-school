@@ -7,7 +7,7 @@ shell: main.o server.o error.o client.o bin
 main.o: main.c error.h
 	$(COMPILER) -o main.o -c main.c
 
-server.o: server.c common.h
+server.o: server.c common.h server.h
 	$(COMPILER) -o server.o -c server.c
 
 error.o: error.c error.h
