@@ -1,17 +1,15 @@
 #include <pthread.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <poll.h>
 #include "common.h"
 #include "server.h"
 
 
 // Переменные выведены в глабальную область для возможности доступа из других потоков
 
-// Файловый дескриптор сокета
-static int sock_fd;
-
-// Протокол: TCP или UDP
-static int proto;
+// Массив файловых дескрипторов сокетов TCP и UDP
+static int sockets[SOCKETS_NUM];
 
 // Флаг для прерывания работы программы по сигналу
 static volatile int no_cancel = 1;
@@ -21,34 +19,24 @@ static req_queue_t que;
 
 
 /*
- * echo_server - Сервер сетевого эхо
- * @mode: тип сокета, определяющий транспортный протокол (TCP/UDP)
- * @address: структура локального IP адреса
- * Открытие сокета, принятие входящих подключений, запуск потоков обработки запросов
+ * serve - Сервер сетевого эхо
+ * Открытие сокетов, принятие входящих подключений, запуск потоков обработки запросов
  */
-void echo_server(int mode)
+void serve()
 {
-	proto = mode;
-
 	// Регистрируем обработчика сигнала прерывания
 	signal(SIGINT, sig_int_hnd);
 
-	// Создание сокета
-	sock_fd = socket(AF_INET, proto, 0);
-	if (sock_fd < 0)
-		print_and_quit("Socket creation failure");
+	// Создаём TCP и UDP сокеты
+	sockets[SKT_TCP] = open_socket(SOCK_STREAM);
+	sockets[SKT_UDP] = open_socket(SOCK_DGRAM);
 
-	// Подготовка структуры адреса сервера
-	struct sockaddr_in address;
-	init_address(&address);
-
-	// Привязка сокета к IP адресу
-	if (bind(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0)
-		print_and_quit("Can not bind IP address");
-
-	// Для режма TCP разрешаем приём входящих подключений
-	if ((proto == SOCK_STREAM) && listen(sock_fd, MAX_CONNECTIONS) < 0)
-		print_and_quit("Can not listen socket");
+	// Заполняем структуру для опроса готовности дескрипторов сокетов к чтению
+	struct pollfd pds[SOCKETS_NUM];
+	for (int i = 0; i < SOCKETS_NUM; ++i) {
+		pds[i].fd = sockets[i];
+		pds[i].events = POLLIN | POLLPRI;
+	}
 
 	// Инициализация массива обработчиков клиентских запросов
 	pthread_t workers[THREADS_NUM];
@@ -66,17 +54,29 @@ void echo_server(int mode)
 		while (que.jobs[inc_index(&que.next_add)].state != ST_FREE && no_cancel);
 		conn_info_t* ci = &que.jobs[que.next_add];
 
-		// Принимаем входящее подключение и считывем полученные данные
-		if (proto == SOCK_STREAM) {
-			ci->conn_fd = accept(sock_fd, (struct sockaddr*) &ci->claddr, &alen);
+		// Ждём готовности файловых дескрипторов к чтению данных
+		int poll_res = poll(pds, SOCKETS_NUM, -1);
+		if (! poll_res || ! no_cancel)
+			continue;
+		else if (poll_res < 0)
+			print_and_quit("Error at poll()");
+
+		// Проверяем, что дескрипторы сокетов действительно готовы к чтению
+		if (pds[SKT_TCP].revents & POLLIN) {
+			// Принимаем входящее TCP подключение и считывем полученные данные
+			ci->conn_fd = accept(sockets[SKT_TCP], (struct sockaddr*) &ci->claddr, &alen);
 			if (ci->conn_fd < 0) {
 				if (no_cancel)
 					puts("Error while accepting connection");
 				continue;
 			}
 			ci->bytes = read(ci->conn_fd, ci->buf, BUF_SIZE);
-		} else
-			ci->bytes = recvfrom(sock_fd, ci->buf, BUF_SIZE, 0, (struct sockaddr*) &ci->claddr, &alen);
+		}
+		else if (pds[SKT_UDP].revents & POLLIN) {
+			// Считываем данные из UDP сокета
+			ci->bytes = recvfrom(sockets[SKT_UDP], ci->buf, BUF_SIZE, 0, (struct sockaddr*) &ci->claddr, &alen);
+			ci->conn_fd = 0;
+		}
 
 		// Сообщаем потокам-обработчикам, что для них есть работа
 		ci->state = ST_WAIT;
@@ -90,6 +90,35 @@ void echo_server(int mode)
 	pthread_mutex_destroy(&que.mtx);
 	sem_destroy(&que.sem);
 	puts("Closing server");
+}
+
+
+/*
+ * open_socket - Создание сетевого сокета
+ * @mode: тип сокета, определяющий транспортный протокол (TCP/UDP)
+ * @address: структура локального IP адреса
+ * @return: файловый дескриптор открытого сокета
+ */
+int open_socket(int mode)
+{
+	// Создание сокета
+	int sock_fd = socket(AF_INET, mode, 0);
+	if (sock_fd < 0)
+		print_and_quit("Socket creation failure");
+
+	// Подготовка структуры адреса сервера
+	struct sockaddr_in address;
+	init_address(&address);
+
+	// Привязка сокета к IP адресу
+	if (bind(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0)
+		print_and_quit("Can not bind IP address");
+
+	// Для режма TCP разрешаем приём входящих подключений
+	if ((mode == SOCK_STREAM) && listen(sock_fd, MAX_CONNECTIONS) < 0)
+		print_and_quit("Can not listen socket");
+
+	return sock_fd;
 }
 
 
@@ -168,10 +197,10 @@ int id = *((int*) par);
  */
 void send_to_client(const conn_info_t* ci, const char* data)
 {
-	if (proto == SOCK_STREAM)
+	if (ci->conn_fd)
 		write(ci->conn_fd, data, strlen(data));
 	else
-		sendto(sock_fd, data, strlen(data), 0, (struct sockaddr*) &ci->claddr, sizeof(ci->claddr));
+		sendto(sockets[SKT_UDP], data, strlen(data), 0, (struct sockaddr*) &ci->claddr, sizeof(ci->claddr));
 }
 
 /*
@@ -189,11 +218,13 @@ void sig_int_hnd(int x)
 	for (int i = 0; i < THREADS_NUM; ++i)
 		sem_post(&que.sem);
 
-	if (sock_fd) {
-		shutdown(sock_fd, SHUT_RDWR);
-		close(sock_fd);
-		sock_fd = 0;
+	// Закрытие сокетов
+	for (int s = 0; s < SOCKETS_NUM; ++s) if (s) {
+		shutdown(sockets[s], SHUT_RDWR);
+		close(sockets[s]);
+		sockets[s] = 0;
 	}
+
 }
 
 /*

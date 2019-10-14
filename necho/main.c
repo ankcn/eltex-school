@@ -6,16 +6,16 @@
 
 
 // Объявления внешних функций
-extern void echo_server(int proto);
+extern void serve();
 extern void echo_client(int proto, const char* host, const char* msg);
 
 
 int main(int argc, char** argv)
 {
 	// Проверка количества переданных аргументов и вывод шаблона использования программы
-	if (argc < 3) {
-		puts("Usage: necho [-s] -t|u [host] [payload]");
-		puts("\t-s : server mode\n\t-t : TCP transport\n\t-u : UDP transport\n\thost : server address\n\tpayload : data for transmit");
+	if (argc < 2) {
+		puts("Usage: necho [-s] [-t|u] [host] [payload]");
+		puts("\t-s : transport mode\n\t-t : TCP\n\t-u : UDP\n\thost : server address\n\tpayload : data for transmit");
 		return 1;
 	}
 
@@ -40,12 +40,8 @@ int main(int argc, char** argv)
 
 	// Если задан режим сервера, то запускаем сервер
 	if (server) {
-		printf("Starting server in ");
-		if (mode == SOCK_STREAM)
-			puts("TCP mode");
-		else
-			puts("UDP mode");
-		echo_server(mode);
+		puts("Starting server");
+		serve();
 	}
 	// Иначе запускаем клиента
 	else {

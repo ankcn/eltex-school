@@ -11,6 +11,9 @@
 // Размер очереди обращений
 #define QUEUE_SIZE	5
 
+// Количество прослушиваемых сокетов
+#define SOCKETS_NUM	2
+
 
 // Тип состояний слота очереди: свободен, ожидает обработки, обрабатывается
 typedef enum { ST_FREE, ST_WAIT, ST_WORKING } status_t;
@@ -34,8 +37,11 @@ typedef struct {
 	conn_info_t jobs[QUEUE_SIZE];	// Массив запросов/задач
 } req_queue_t;
 
+// Индексы сокетов для работы с массивом
+enum { SKT_TCP = 0, SKT_UDP = 1 };
 
-void echo_server();
+
+int open_socket(int mode);
 
 void* request_handler(void*);
 
