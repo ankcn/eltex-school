@@ -14,8 +14,8 @@ int main(int argc, char** argv)
 {
 	// Проверка количества переданных аргументов и вывод шаблона использования программы
 	if (argc < 2) {
-		puts("Usage: necho [-s] [-t|u] [host] [payload]");
-		puts("\t-s : transport mode\n\t-t : TCP\n\t-u : UDP\n\thost : server address\n\tpayload : data for transmit");
+		puts("Usage: necho [-s] [-t|u|r] [host] [payload]");
+		puts("\t-s : transport mode\n\t-t : TCP\n\t-u : UDP\n\t-r : RAW UDP\n\thost : server address\n\tpayload : data for transmit");
 		return 1;
 	}
 
@@ -33,6 +33,8 @@ int main(int argc, char** argv)
 			mode = SOCK_STREAM;
 		else if (! strcmp(argv[i], "-u"))
 			mode = SOCK_DGRAM;
+		else if (! strcmp(argv[i], "-r"))
+			mode = SOCK_RAW;
 	}
 
 	if (! mode)

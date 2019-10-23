@@ -1,8 +1,9 @@
 COMPILER = gcc -Wall
 
-shell: main.o server.o error.o client.o bin
+necho: main.o server.o error.o client.o bin
 	$(COMPILER) -o bin/necho main.o server.o error.o client.o -lpthread -lrt
 	rm *.o
+	sudo setcap cap_net_admin,cap_net_raw=eip bin/necho
 
 main.o: main.c error.h
 	$(COMPILER) -o main.o -c main.c
