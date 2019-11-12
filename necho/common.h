@@ -27,7 +27,10 @@
 #define UDP_H_SIZE	sizeof(struct udphdr)
 
 // Размер заголовка IP
-#define IP_H_SIZE	20
+#define IP_H_SIZE	sizeof(struct ip)
+
+//  Длинна заголовков IP + UDP
+#define IP_AND_UDP_H_SIZE	(UDP_H_SIZE + IP_H_SIZE)
 
 
 #endif // COMMON_H_INCLUDED

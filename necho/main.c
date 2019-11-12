@@ -15,7 +15,7 @@ int main(int argc, char** argv)
 	// Проверка количества переданных аргументов и вывод шаблона использования программы
 	if (argc < 2) {
 		puts("Usage: necho [-s] [-t|u|r] [host] [payload]");
-		puts("\t-s : transport mode\n\t-t : TCP\n\t-u : UDP\n\t-r : RAW UDP\n\thost : server address\n\tpayload : data for transmit");
+		puts("\t-s : server mode\n\t-t : TCP transport \n\t-u : UDP\n\t-r : RAW UDP (client only)\n\thost : server address\n\tpayload : data for transmit");
 		return 1;
 	}
 
