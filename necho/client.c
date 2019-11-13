@@ -2,7 +2,17 @@
 #include <netdb.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
+#include <netinet/ether.h>
+#include <netpacket/packet.h>
 #include <errno.h>
+
+
+#define MAC_LOCAL	"00:50:56:b1:e0:eb"
+#define MAC_GATEWAY	"b8:38:61:68:3c:bf"
+#define IP_ADDR_SRC	"10.0.5.11"
+#define	IP_ID		12345
+#define	IP_HDR_LEN	5
+#define IF_INDEX	2
 
 
 /*
@@ -35,6 +45,20 @@ int resolve_name(const char* name, struct sockaddr_in* address)
 	return 0;
 }
 
+
+/*
+ * str_to_mac - Получение MAC адреса из строки
+ * @str: строковое представление MAC адреса
+ * @mac: буфер под двоичное представление MAC адреса
+ */
+void str_to_mac(const char* str, u_char* mac)
+{
+	struct ether_addr ea;
+	ether_aton_r(str, &ea);
+	memcpy(mac, &ea, ETHER_ADDR_LEN);
+}
+
+
 /*
  * echo_client - Клиент сетевого эхо
  * @proto: тип сокета, определяющий транспортный протокол (TCP/UDP)
@@ -51,11 +75,7 @@ void echo_client(int proto, const char* host, const char* msg)
 	int msg_size = strlen(msg) + 1;
 	char buf[BUF_SIZE];
 	memset(buf, 0, BUF_SIZE);
-
-	// Создание сокета
-	int sock_fd = socket(AF_INET, proto, (proto == SOCK_RAW) ? IPPROTO_RAW : IPPROTO_IP);
-	if (sock_fd < 0)
-		print_and_quit("Socket creation failure. Must be root for RAW sockets.");
+	int sock_fd = 0;
 
 	// Преобразование IP адреса сервера из строки с именем
 	struct sockaddr_in address;
@@ -68,25 +88,46 @@ void echo_client(int proto, const char* host, const char* msg)
 	// В случае режима RAW сокетов выполняем особый порядок действий
 	if (proto == SOCK_RAW) {
 
-		// Заполняем структуру заголовка IP и размещаем его в начале буфера
-		struct ip* iph = (struct ip*) buf;
-		iph->ip_p = IPPROTO_UDP;
-		iph->ip_hl = 5;
-		iph->ip_v = 4;
-		iph->ip_ttl = 64;
-		iph->ip_id = htons(12345);
-		iph->ip_dst = address.sin_addr;
+		// Создание сокета
+		sock_fd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_IP));
+		if (sock_fd < 0)
+			print_and_quit("Socket creation failure. Must be root for RAW sockets.");
 
-		// Заполняем структуру заголовка UDP и размещаем его после заголовка IP 
-		struct udphdr* uh = (struct udphdr*) (buf + IP_H_SIZE);
+		// Заголовок ethernet располагаем в начало буфера
+		struct ether_header* eh = (struct ether_header*) buf;
+		eh->ether_type = htons(ETHERTYPE_IP);
+		str_to_mac(MAC_GATEWAY, eh->ether_dhost);
+		str_to_mac(MAC_LOCAL, eh->ether_shost);
+
+		// Структура низкоуровневого адреса сокета
+		struct sockaddr_ll psa;
+		psa.sll_family = AF_PACKET;
+		memcpy(psa.sll_addr, eh->ether_dhost, ETHER_ADDR_LEN);
+		psa.sll_halen = ETHER_ADDR_LEN;
+		psa.sll_protocol = htons(ETHERTYPE_IP);
+		psa.sll_ifindex = IF_INDEX;
+
+		// Заполняем структуру заголовка IP и размещаем его после ethernet заголовка
+		struct ip* iph = (struct ip*) (buf + ETHER_HDR_LEN);
+		iph->ip_p = IPPROTO_UDP;
+		iph->ip_hl = IP_HDR_LEN;
+		iph->ip_v = IPVERSION;
+		iph->ip_ttl = IPDEFTTL;
+		iph->ip_id = htons(IP_ID);
+		iph->ip_dst = address.sin_addr;
+		iph->ip_len = htons(IP_AND_UDP_H_SIZE + msg_size);
+		inet_pton(AF_INET, IP_ADDR_SRC, &iph->ip_src.s_addr);
+
+		// Заполняем структуру заголовка UDP и размещаем его после заголовка IP
+		struct udphdr* uh = (struct udphdr*) (buf + IP_H_SIZE + ETHER_HDR_LEN);
 		uh->uh_dport = address.sin_port;
 		uh->uh_sport = htons(SOURCE_PORT);
 		uh->uh_ulen = htons(UDP_H_SIZE + msg_size);
 
-		// Копируем полученную от пользователя строку в буфер со смещением на размер заголовкov
-		strcpy((char *) (buf + IP_AND_UDP_H_SIZE), msg);
+		// Копируем полученную от пользователя строку в буфер со смещением на размер заголовков
+		strcpy((char *) (buf + IP_AND_UDP_H_SIZE + ETHER_HDR_LEN), msg);
 
-		// Создание отдельного сокета для получения ответа от сервера (поскольку сокет с протоколом IPPROTO_RAW не пригоден для чтения)
+		// Создание отдельного сокета для получения ответа от сервера
 		int ro_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 		if (ro_fd < 0)
 			print_and_quit("Recieve socket creation failure.");
@@ -101,7 +142,7 @@ void echo_client(int proto, const char* host, const char* msg)
 		bind(ro_fd, (struct sockaddr*) &loc_addr, sizeof(loc_addr));
 
 		// Отправляем сообщение серверу
-		if (sendto(sock_fd, buf, IP_AND_UDP_H_SIZE + msg_size, 0, (struct sockaddr*) &address, sizeof(address)) < 0)
+		if (sendto(sock_fd, buf, ETHER_HDR_LEN + IP_AND_UDP_H_SIZE + msg_size, 0, (struct sockaddr*) &psa, sizeof(psa)) < 0)
 			print_and_quit("Error at sendto()");
 
 		// Считываем ответ
@@ -111,6 +152,11 @@ void echo_client(int proto, const char* host, const char* msg)
 
 	// В режимах TCP и UDP
 	else {
+		// Создание сокета
+		sock_fd = socket(AF_INET, proto, IPPROTO_IP);
+		if (sock_fd < 0)
+			print_and_quit("Socket creation failure.");
+
 		// Подключение к серверу
 		if (connect(sock_fd, (struct sockaddr*) &address, sizeof(address)) < 0)
 			print_and_quit("Connection error");
