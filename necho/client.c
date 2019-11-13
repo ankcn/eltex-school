@@ -5,14 +5,14 @@
 #include <netinet/ether.h>
 #include <netpacket/packet.h>
 #include <errno.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 
 
-#define MAC_LOCAL	"00:50:56:b1:e0:eb"
 #define MAC_GATEWAY	"b8:38:61:68:3c:bf"
-#define IP_ADDR_SRC	"10.0.5.11"
 #define	IP_ID		12345
 #define	IP_HDR_LEN	5
-#define IF_INDEX	2
+#define IF_NAME		"ens192"
 
 
 /*
@@ -93,11 +93,18 @@ void echo_client(int proto, const char* host, const char* msg)
 		if (sock_fd < 0)
 			print_and_quit("Socket creation failure. Must be root for RAW sockets.");
 
+		// Создаём структуру для формирования запросов на получение параметров сетевого интерфейса
+		struct ifreq req;
+		strcpy(req.ifr_name, IF_NAME);
+
 		// Заголовок ethernet располагаем в начало буфера
 		struct ether_header* eh = (struct ether_header*) buf;
 		eh->ether_type = htons(ETHERTYPE_IP);
 		str_to_mac(MAC_GATEWAY, eh->ether_dhost);
-		str_to_mac(MAC_LOCAL, eh->ether_shost);
+
+		// Запрашиваем MAC адрес интерфейса
+		ioctl(sock_fd, SIOCGIFHWADDR, &req);
+		memcpy(eh->ether_shost, req.ifr_hwaddr.sa_data, ETHER_ADDR_LEN);
 
 		// Структура низкоуровневого адреса сокета
 		struct sockaddr_ll psa;
@@ -105,7 +112,10 @@ void echo_client(int proto, const char* host, const char* msg)
 		memcpy(psa.sll_addr, eh->ether_dhost, ETHER_ADDR_LEN);
 		psa.sll_halen = ETHER_ADDR_LEN;
 		psa.sll_protocol = htons(ETHERTYPE_IP);
-		psa.sll_ifindex = IF_INDEX;
+
+		// Запрашиваем индекс интерфейса
+		ioctl(sock_fd, SIOCGIFINDEX, &req);
+		psa.sll_ifindex = req.ifr_ifindex;
 
 		// Заполняем структуру заголовка IP и размещаем его после ethernet заголовка
 		struct ip* iph = (struct ip*) (buf + ETHER_HDR_LEN);
@@ -116,7 +126,10 @@ void echo_client(int proto, const char* host, const char* msg)
 		iph->ip_id = htons(IP_ID);
 		iph->ip_dst = address.sin_addr;
 		iph->ip_len = htons(IP_AND_UDP_H_SIZE + msg_size);
-		inet_pton(AF_INET, IP_ADDR_SRC, &iph->ip_src.s_addr);
+
+		// Запрашиваем IP адрес интерфейса
+		ioctl(sock_fd, SIOCGIFADDR, &req);
+		iph->ip_src = ((struct sockaddr_in*) &req.ifr_addr)->sin_addr;
 
 		// Заполняем структуру заголовка UDP и размещаем его после заголовка IP
 		struct udphdr* uh = (struct udphdr*) (buf + IP_H_SIZE + ETHER_HDR_LEN);
@@ -134,7 +147,7 @@ void echo_client(int proto, const char* host, const char* msg)
 
 		// Описываем локальный IP адрес, на котором будем слушать ответ от сервера
 		struct sockaddr_in loc_addr;
-		loc_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+		loc_addr.sin_addr = iph->ip_src;
 		loc_addr.sin_port = htons(SOURCE_PORT);
 		loc_addr.sin_family = AF_INET;
 
